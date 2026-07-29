@@ -1,6 +1,6 @@
 From Stdlib Require Import Btauto.
 Require Import ssreflect ssrbool ssrfun.
-From mathcomp Require Import ssrnat seq eqtype.
+From mathcomp Require Import ssrnat seq choice eqtype.
 
 (* We reserve some notation for later, to make the lemmas easier to read.
    Roughly speaking:
@@ -431,3 +431,141 @@ Proof.
 Qed.
 
 End HigmanOrderWF.
+
+Section BarPredicates.
+(* We have now come to a point where we need to prove some
+   properties about so-called bar predicates. This will be
+   the simplest way to work with well-orders and properties
+   of infinite sequence. *)
+
+Context {T: Type}.
+
+(* Idea: less than 10 example *)
+Inductive Bar (P: seq T -> Prop) (l: seq T): Prop :=
+| Bar_nil: P l -> Bar P l
+| Bar_cons: (forall a, Bar P (rcons l a)) -> Bar P l.
+
+Print mkseq.
+
+Definition fun_succ (f: nat -> T): nat -> T := fun n => f n.+1.
+
+Lemma mkseq0: forall (f: nat -> T),
+  mkseq f 0 = [::].
+Proof. done. Qed.
+
+Lemma mkseqSr: forall (f: nat -> T) n,
+  mkseq f n.+1 = (f 0) :: mkseq (fun_succ f) n.
+Proof.
+  move => f; elim => [//|n IH].
+  by rewrite mkseqS IH mkseqS rcons_cons.
+Qed.
+
+Lemma Bar_mkseq: forall P l,
+  Bar P l -> forall (f: nat -> T), exists n, P (l ++ mkseq f n).
+Proof.
+  move => P l; elim => [{}l H f|{}l _ IH f];
+    first by exists 0; rewrite cats0.
+  move: (IH (f 0) (fun_succ f)) => [n].
+  rewrite cat_rcons -mkseqSr => H.
+  by exists n.+1.
+Qed.
+
+Theorem Bar_nil_mkseq: forall P,
+  Bar P [::] -> forall (f: nat -> T), exists n, P (mkseq f n).
+Proof.
+  move => P H f; move: (Bar_mkseq P [::] H f) => [n /=].
+  by exists n.
+Qed.
+
+End BarPredicates.
+
+Section BarClassicalEquivalence.
+From Stdlib Require Import Classical ChoiceFacts.
+
+Context {T : Type}.
+
+Lemma not_Bar_spec: forall {P} {l: seq T},
+   ~ (Bar P l) -> ~ (P l) /\ exists a, ~ (Bar P (rcons l a)).
+Proof.
+  move => P l H; split => [Hfalso | ];
+    first by apply /H /Bar_nil.
+  apply not_all_ex_not => Hfalso. (* This uses excluded middle *)
+  by apply /H /Bar_cons.
+Qed.
+
+Definition not_Bar_rcons (P: seq T -> Prop) l l': Prop:= 
+    ~ Bar P l -> exists a, l' = rcons l a /\ ~ Bar P l'.
+
+Lemma not_Bar_counter_seq: forall {P: seq T -> Prop},
+  forall l, exists l', not_Bar_rcons P l l'.
+Proof.
+   move => P l.
+   case: (classic (Bar P l)); (* Excluded middle *)
+     first by exists [::].
+   move/not_Bar_spec => [_ [a H]].
+   exists (rcons l a) => _.
+   by exists a.
+Qed.
+
+(* Now we assume we have an axiom of dependent choice on seq T. *)
+Hypothesis Hchoice: FunctionalDependentChoice_on (seq T).
+
+Lemma not_Bar_counter_seq_fun: forall (P: seq T -> Prop),
+   exists (f: nat -> seq T),
+   f 0 = [::] /\
+   forall n, not_Bar_rcons P (f n) (f n.+1).
+Proof.
+   move => P.
+   (* Use axiom to get a function mapping each n to a sequence of length n
+      disproving P, so that additionally each f n is a subsequence of f n.+1.
+   *)
+   apply /Hchoice /not_Bar_counter_seq.
+Qed.
+
+(* Assume T is non-empty. This is not strictly necessary, but makes life
+   easier, and were already assuming so much we might as well. *)
+Hypothesis Hnonempty: inhabited T.
+
+Search nth last.
+
+Lemma not_Bar_counter_fun: forall {P: seq T -> Prop},
+   ~ Bar P [::] ->
+   exists f: nat -> T, forall n, ~ P (mkseq f n).
+Proof.
+   move => P H.
+   move: (not_Bar_counter_seq_fun P) => [f [Hf0 Hfn]].
+   (* In Rocq the nth function needs a default argument since we
+      can't always guarantee that the function won't index out
+      of founds. So we pick any element of T for this. *)
+   (* Of course, because of the definition of the function f,
+      size (f n.+1) = n.+1 for all n, so the n-th element is always
+      defined, hence t0 will never actually be relevant. *)
+   move: Hnonempty => [t0].
+   move Hg: (fun n => nth t0 (f n.+1) n) => g.
+   have: (forall n, size (f n) = n /\ mkseq g n = f n /\ ~ Bar P (f n)) => [|IHg].
+   - elim => [|n [IHsize [IHg IHBar]]];
+       first by rewrite Hf0.
+     rewrite mkseqS IHg -Hg /=.
+     move: (Hfn n IHBar) => [a [-> HBar]]; split;
+       first by rewrite size_rcons IHsize.
+     split => [|//].
+     f_equal.
+     have: (n = (size (rcons (f n) a)).-1) => [|{2}->];
+       first by rewrite size_rcons IHsize.
+     by rewrite nth_last last_rcons.
+   - exists g => n.
+     by move: (IHg n) => [_ [-> /not_Bar_spec []]].
+Qed.
+
+Theorem Bar_nil_mkseqR: forall P,
+  (forall (f: nat -> T), exists n, P (mkseq f n)) -> Bar P [::].
+Proof.
+  move => P H; apply NNPP => HN; move: H.
+  apply ex_not_not_all. (* Excluded middle *)
+  move: (not_Bar_counter_fun HN) => [f Hf].
+  by exists f; case.
+Qed.
+
+
+End BarClassicalEquivalence.
+
