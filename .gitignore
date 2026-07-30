@@ -1,0 +1,16 @@
+*Makefile.rocq*
+*Makefile.coq*
+CoqMakefile.conf
+*.aux
+*.vo
+*.vok
+*.vos
+*.glob
+.coq-native/
+_opam
+blueprint/web/
+blueprint/print/
+blueprint/rocq_decls
+blueprint/src/web.paux
+html/
+.DS_Store

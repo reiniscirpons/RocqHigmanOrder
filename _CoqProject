@@ -1,0 +1,4 @@
+-docroot HigmanOrder
+-R theories HigmanOrder
+
+theories/Higman.v
