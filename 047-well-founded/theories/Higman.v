@@ -2,6 +2,8 @@ From Stdlib Require Import Btauto.
 Require Import ssreflect ssrbool ssrfun.
 From mathcomp Require Import ssrnat seq choice eqtype.
 
+(* Higman is well *)
+
 (* We reserve some notation for later, to make the lemmas easier to read.
    Roughly speaking:
 
@@ -25,16 +27,12 @@ Reserved Notation "u <=^*_ R v"
   (at level 60, R name, v at level 70, format "u  <=^*_ R  v").
 Reserved Notation "u <=^^*_ R v"
   (at level 60, R name, v at level 70, format "u  <=^^*_ R  v").
-Reserved Notation "u <=^prod_ R v"
-  (at level 60, R name, v at level 70, format "u  <=^prod_ R  v").
 Reserved Notation "a <_ R b"
   (at level 60, R name, b at level 70, format "a  <_ R  b").
 Reserved Notation "u <^*_ R v"
   (at level 60, R name, v at level 70, format "u  <^*_ R  v").
 Reserved Notation "u <^^*_ R v"
   (at level 60, R name, v at level 70, format "u  <^^*_ R  v").
-Reserved Notation "u <^prod_ R v"
-  (at level 60, R name, v at level 70, format "u  <^prod_ R  v").
 
 (* In this section we define some properties of quasi-orders.
    Rocq already has much of this formalized in the
@@ -72,7 +70,7 @@ Notation "a <= b" := (R a b).
 (* Lets now define the strict order associate to R.
    Recall that a < b holds precisely when a <= b and not b <= a.
    We can translate this mathematical definition directly to Rocq
-   as (a <= b) && ~~ (b <= a). Here && is the boolean and function
+   as (a <= b) && ~~ (b <= a). Here && is the boolean conjunction
    and ~~ is the boolean negation. *)
 Definition Lt a b := ((a <= b) && ~~ (b <= a)).
 (* Lets give Lt a notation too. *)
@@ -397,7 +395,7 @@ End HigmanLtOrder.
 Notation "a <^*_ R b" := ((a <=^*_R b) /\ ~ (b <=^*_R a)).
 Notation "a <^^*_ R b" := (HigmanLtDec R a b).
 
-Section HigmanOrderWF.
+Section HigmanIsWellFounded.
 
 Context {T: Type}.
 Variable (R: rel T).
@@ -430,7 +428,7 @@ Proof.
   by apply Acc_intro; case.
 Qed.
 
-End HigmanOrderWF.
+End HigmanIsWellFounded.
 
 Section BarPredicates.
 (* We have now come to a point where we need to prove some
@@ -481,6 +479,9 @@ End BarPredicates.
 
 Section BarClassicalEquivalence.
 From Stdlib Require Import Classical ChoiceFacts.
+
+(* TODO: rewrite with classically *)
+Search classically.
 
 Context {T : Type}.
 
@@ -566,6 +567,55 @@ Proof.
   by exists f; case.
 Qed.
 
-
 End BarClassicalEquivalence.
+
+Section WellQuasiOrder.
+
+Context {T: Type}.
+Variable (R: rel T).
+
+
+Fixpoint has_ascending_pair (l: seq T): bool :=
+  match l with
+  | [::] => false
+  | a::l' => (has (R a) l') || has_ascending_pair l'
+  end.
+
+Search has nth.
+
+Lemma has_ascending_pairP: forall a0 l,
+  reflect
+    (exists i j, i < j /\ j < size l /\ nth a0 l i <=_R nth a0 l j)
+    (has_ascending_pair l).
+Proof.
+  move => a0 l; apply /(iffP idP).
+  - elim: l => [//|a l IH /= /orP
+      [/(has_nthP a0) [j Hj Hij]
+      |/IH [i [j [Hi [Hj Hij]]]]]];
+      first by exists 0; exists j.+1.
+    by exists i.+1; exists j.+1.
+  - elim: l => [[i [[|j] [Hi [Hj //]]]]|a l IH].
+    move => [[|i] [[|j] /= [Hi [Hj Hij]]]] //; apply /orP.
+  -- by left; apply /(has_nthP a0); exists j.
+  -- by right; apply IH; exists i; exists j.
+Qed.
+
+Definition Well: Prop := Bar has_ascending_pair [::].
+
+Lemma Well_spec: Well ->
+   forall (a0: T) (f: nat -> T), exists i j, i < j /\ f i <=_R f j.
+Proof.
+   move/Bar_nil_mkseq => H a0 f.
+   move: (H f) => [n /(has_ascending_pairP a0) [i [j [Hi []]]]].
+   rewrite size_mkseq => Hj.
+   rewrite !nth_mkseq => [Hij|//|];
+     last by apply ltn_trans with j.
+   by exists i; exists j.
+Qed.
+
+
+End WellQuasiOrder.
+
+Print pairwise.
+Search pairwise.
 
