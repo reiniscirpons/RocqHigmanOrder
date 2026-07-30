@@ -1,8 +1,52 @@
+(*| 
+
+==============
+Higman is well 
+==============
+:Author: Reinis Cirpons <reinis.cirpons@inria.fr>
+:Description: A `Rocq <https://rocq-prover.org>`_ formalizaion of `Higman's lemma <https://en.wikipedia.org/wiki/Higman's_lemma>`_.
+
+The goal of this short note is to give a self-contained formalization
+of Higman's lemma:
+
+  **Theorem**: Let :math:`\leq` be a well-quasi-order on a set
+  :math:`T`. Then the associated Higman embedding order
+  :math:`\leq^\ast` is a well-quasi-order on the set
+  :math:`T^\ast` of words over :math:`T`.
+
+We will explain what each of these terms means as they come up.
+Generally, we do not assume prior knowledge of either Rocq
+or Higmans lemma, and will try to gently introduce both.
+
+For a much more detailed introduction to Rocq we recommend
+Volume 1: *Logical Foundations* of the *Software foundations*
+series [1]_ as well as the
+the *Mathematical Components* book [2]_,
+see also the `Rocq documentation <https://rocq-prover.org/docs>`_
+page for more learning materials.
+
+For a much more detailed introduction to the theory of
+well-quasi-orders we recommend the lecture notes for the course
+*Well-Quasi-Orders for Algorithms* [3]_.
+
+|*)
+
+(*|
+
+About this document
+===================
+
+|*)
 From Stdlib Require Import Btauto.
 Require Import ssreflect ssrbool ssrfun.
-From mathcomp Require Import ssrnat seq choice eqtype.
+From mathcomp Require Import ssrnat seq choice eqtype. (* .no-messages *)
 
-(* Higman is well *)
+(*|
+
+Notations
+=========
+
+|*)
 
 (* We reserve some notation for later, to make the lemmas easier to read.
    Roughly speaking:
@@ -33,6 +77,13 @@ Reserved Notation "u <^*_ R v"
   (at level 60, R name, v at level 70, format "u  <^*_ R  v").
 Reserved Notation "u <^^*_ R v"
   (at level 60, R name, v at level 70, format "u  <^^*_ R  v").
+
+(*|
+
+Quasi-orders
+============
+
+|*)
 
 (* In this section we define some properties of quasi-orders.
    Rocq already has much of this formalized in the
@@ -174,6 +225,13 @@ Section HigmanLeqOrder.
    as the base relation on T. *)
 Context {T: Type}.
 Variable (R: rel T).
+
+(*|
+
+Higman's embedding order
+========================
+
+|*)
 
 (* We first consider the non-strict Higman order in an inductive fashion.
    The type seq T is the type of sequences of elements in T, i.e. words,
@@ -395,6 +453,13 @@ End HigmanLtOrder.
 Notation "a <^*_ R b" := ((a <=^*_R b) /\ ~ (b <=^*_R a)).
 Notation "a <^^*_ R b" := (HigmanLtDec R a b).
 
+(*|
+
+Well-foundedness
+================
+
+|*)
+
 Section HigmanIsWellFounded.
 
 Context {T: Type}.
@@ -429,6 +494,13 @@ Proof.
 Qed.
 
 End HigmanIsWellFounded.
+
+(*|
+
+Bar induction
+=============
+
+|*)
 
 Section BarPredicates.
 (* We have now come to a point where we need to prove some
@@ -569,6 +641,13 @@ Qed.
 
 End BarClassicalEquivalence.
 
+(*|
+
+Wellness
+========
+
+|*)
+
 Section WellQuasiOrder.
 
 Context {T: Type}.
@@ -619,3 +698,23 @@ End WellQuasiOrder.
 Print pairwise.
 Search pairwise.
 
+
+(*|
+
+Bibliography
+============
+
+.. [1] Benjamin C. Pierce, Arthur Azevedo de Amorim, Chris Casinghino, Marco Gaboardi, Michael Greenberg, Cătălin Hriţcu, Vilhelm Sjöberg, & Brent Yorgey. (2026).
+   *Logical Foundations*. (Vol. 1) Electronic textbook.
+   URL: <https://softwarefoundations.cis.upenn.edu>.
+
+.. [2] Assia Mahboubi & Enrico Tassi. (2022).
+   *Mathematical Components* (Version 1.0.2).
+   DOI: `10.5281/zenodo.7118596 <https://doi.org/10.5281/zenodo.7118596>`_
+   URL: <https://math-comp.github.io/mcb/>.
+
+.. [3] S. Demri, A. Finkel, J. Goubault-Larrecq, S. Schmitz, & Ph. Schnoebelen. (2024).
+   *Well-Quasi-Orders for Algorithms*. Electronic lecture notes.
+   URL: <https://lsv.ens-paris-saclay.fr/~phs/lecture-notes-wqo-mar2024.pdf>.
+
+|*)
