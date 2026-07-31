@@ -682,16 +682,53 @@ Qed.
 Definition Well: Prop := Bar has_ascending_pair [::].
 
 Lemma Well_spec: Well ->
-   forall (a0: T) (f: nat -> T), exists i j, i < j /\ f i <=_R f j.
+  forall (a0: T) (f: nat -> T), exists i j, i < j /\ f i <=_R f j.
 Proof.
-   move/Bar_nil_mkseq => H a0 f.
-   move: (H f) => [n /(has_ascending_pairP a0) [i [j [Hi []]]]].
-   rewrite size_mkseq => Hj.
-   rewrite !nth_mkseq => [Hij|//|];
-     last by apply ltn_trans with j.
-   by exists i; exists j.
+  move/Bar_nil_mkseq => H a0 f.
+  move: (H f) => [n /(has_ascending_pairP a0) [i [j [Hi []]]]].
+  rewrite size_mkseq => Hj.
+  rewrite !nth_mkseq => [Hij|//|];
+    last by apply ltn_trans with j.
+  by exists i; exists j.
+
 Qed.
 
+Definition descending (l: seq T): Prop :=
+  pairwise (fun a b => b <_R a) l.
+
+Hypothesis Htrans: transitive R.
+
+Lemma Well_wf': forall a0 l,
+  Bar has_ascending_pair l -> descending l -> Acc (Lt R) (last a0 l).
+Proof.
+  move => a0 l; elim => [{}l|].
+  - move => /(has_ascending_pairP a0) [i [j [Hi [Hj Hij]]]]
+            /(pairwiseP a0) H.
+    exfalso.
+    enough (Hfalso: nth a0 l j <_R nth a0 l i);
+      first by rewrite /(_ <_R _) Hij andbC in Hfalso.
+    by apply H => [|//|//]; apply ltn_trans with j.
+  - elim/last_ind => [/= _ |{}l a _ _ /=] IH H;
+      first by apply IH.
+    rewrite last_rcons; apply Acc_intro => b Hb.
+    move: (IH b) => {}IH; rewrite last_rcons in IH.
+    apply IH; rewrite /descending pairwise_rcons H andbC /=.
+    elim/last_ind: l H {IH} => [/= _|l c IH];
+      first by rewrite Hb.
+    rewrite /descending !pairwise_rcons all_rcons =>
+      /andP [/andP [Hac Hal] /andP [_ Hl]].
+    rewrite !all_rcons andbA [_ && (_ <_R _)]andbC
+            -andbA -all_rcons IH;
+      last by rewrite /descending pairwise_rcons Hal Hl.
+    rewrite andbC /=; apply lt_leq_lt with a => [//|//|].
+    by move/andP: Hac => [].
+Qed.
+    
+Lemma Well_wf: Well -> well_founded (Lt R).
+Proof.
+  move => Hwell a.
+  by apply (Well_wf' a [::]).
+Qed.
 
 End WellQuasiOrder.
 
