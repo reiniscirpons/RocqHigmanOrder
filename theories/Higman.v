@@ -39,7 +39,7 @@ About this document
 |*)
 From Stdlib Require Import Btauto.
 Require Import ssreflect ssrbool ssrfun.
-From mathcomp Require Import ssrnat seq choice eqtype. (* .no-messages *)
+From mathcomp Require Import ssrnat seq choice eqtype path. (* .no-messages *)
 
 (*|
 
@@ -205,6 +205,12 @@ Proof.
   apply/andP; split;
     first by apply Htrans with b.
   by apply /negP => Hca; apply Hcb; apply Htrans with a.
+Qed.
+
+Lemma lt_transitive: transitive R -> transitive Lt.
+Proof.
+  move => Htrans a b c /andP [Hba _] Hac.
+  by apply leq_lt_lt with a.
 Qed.
 
 (* I will not go into as much detail about proofs in the remainder of
@@ -460,6 +466,136 @@ Well-foundedness
 
 |*)
 
+Section WellFounded.
+
+Context {T: Type}.
+Variable (R: rel T).
+
+Definition descending (l: seq T): bool :=
+  pairwise (fun a b => b <_R a) l.
+
+Lemma descending_rcons: forall l a,
+  descending (rcons l a) = all (Lt R a) l && descending l.
+Proof.
+  by move => l a; rewrite /descending pairwise_rcons.
+Qed.
+
+Print mkseq.
+
+Definition fun_succ (f: nat -> T): nat -> T := fun n => f n.+1.
+
+Lemma mkseq0: forall (f: nat -> T),
+  mkseq f 0 = [::].
+Proof. done. Qed.
+
+Lemma mkseqSr: forall (f: nat -> T) n,
+  mkseq f n.+1 = (f 0) :: mkseq (fun_succ f) n.
+Proof.
+  move => f; elim => [//|n IH].
+  by rewrite mkseqS IH mkseqS rcons_cons.
+Qed.
+
+Definition descending_chain_condition: Prop:=
+  forall (f: nat -> T), exists n, ~~ descending (mkseq f n).
+
+Lemma well_founded_DCC:
+  well_founded (Lt R) -> descending_chain_condition.
+Proof.
+  move => Hwf f; move Hx: (f 0) => x.
+  elim/(well_founded_ind Hwf): x f Hx => x IH f Hx.
+  move Hy: (f 1) => y.
+  case Hxy: (y <_R x).
+  - move: (IH y Hxy (fun_succ f) Hy) => [n Hn].
+    exists n.+1.
+    by rewrite mkseqSr /= andbC negb_and Hn.
+  - exists 2 => /=.
+    by rewrite Hx Hy Hxy.
+Qed.
+
+
+Section ClassicalEquivalence.
+From Stdlib Require Import Classical ChoiceFacts.
+
+(* We now give a classical characterization of the negation
+   of the accessibility predicate, namely:
+   if a is not accessible, then there exists a strictly smaller
+   element b that is also not accessible. *)
+Lemma not_AccP: forall a,
+  ~ Acc (Lt R) a <-> exists b, b <_R a /\ ~ Acc (Lt R) b.
+Proof.
+  move => a; split => [Ha|].
+  - apply NNPP. (* This uses excluded middle *)
+    move/not_ex_all_not => Hfalso. (* Excluded middle *)
+    apply /Ha /Acc_intro => b Hb.
+    move/not_and_or: (Hfalso b) => [//|]. (* Excluded middle *)
+    by move /NNPP. (* Excluded middle *)
+  - move => [b [Hba Hb]] [Ha].
+    by apply /Hb /Ha.
+Qed.
+
+(* It follows by iterating not_AccP that a single inaccessible
+   element generates an infinite descending chain of elements.
+   Such a chain clearly contradicts the assumption that there are
+   no infinite descending chains. *)
+
+(* But how can we use not_AccP to construct a concrete infinite
+   chain f: nat -> T? For this we need a choice axiom. *)
+Print FunctionalDependentChoice_on.
+
+(* Now we assume we have an axiom of dependent choice on T. *)
+Hypothesis Hchoice: FunctionalDependentChoice_on T.
+
+Lemma not_Acc_counter_fun: forall a,
+  exists (f: nat -> T),
+  f 0 = a /\
+  forall n,
+    (~ Acc (Lt R) (f n) ->
+    (f n.+1) <_R (f n) /\ ~ Acc (Lt R) (f n.+1)).
+Proof.
+  move => a.
+  (* The axiom of choice will give us a function, provided we can exhibit
+  * an element smaller than any given element. *)
+  apply (Hchoice
+    (fun x y => ~ Acc (Lt R) x -> y <_R x /\ ~ Acc (Lt R) y)) => b.
+  case: (classic (Acc (Lt R) b)) => Hb;
+    first by exists b. (* Excluded middle *)
+  move/not_AccP: Hb => [c [Hcb Hc]].
+  by exists c.
+Qed.
+
+Hypothesis Htrans: transitive R.
+
+Lemma DCC_well_founded:
+  descending_chain_condition -> (well_founded (Lt R)).
+Proof.
+  move => Hdcc.
+  apply NNPP. (* Excluded middle *)
+  move/not_all_ex_not => [a Ha]. (* Excluded middle *)
+  move: (not_Acc_counter_fun a) => [f [H0 HS]].
+  have: (forall n, f n.+1 <_R f n) => [n|Hf {H0 HS}].
+  - apply HS; elim: n => [|n];
+      first by rewrite H0.
+    by case/HS.
+  - move: (Hdcc f) => [n] /negP Hfalso.
+    apply /Hfalso.
+    rewrite /descending -sorted_pairwise => [|];
+      last by apply /rev_trans /lt_transitive.
+    apply /(sortedP a) => i.
+    rewrite size_mkseq => Hi.
+    by rewrite !nth_mkseq => [//||//]; apply ltn_trans with i.+1.
+Qed.
+
+Lemma descending_chain_conditionP:
+  descending_chain_condition <-> (well_founded (Lt R)).
+Proof.
+  split.
+  - by apply DCC_well_founded.
+  - by apply well_founded_DCC.
+Qed.
+End ClassicalEquivalence.
+End WellFounded.
+
+
 Section HigmanIsWellFounded.
 
 Context {T: Type}.
@@ -515,20 +651,6 @@ Inductive Bar (P: seq T -> Prop) (l: seq T): Prop :=
 | Bar_nil: P l -> Bar P l
 | Bar_cons: (forall a, Bar P (rcons l a)) -> Bar P l.
 
-Print mkseq.
-
-Definition fun_succ (f: nat -> T): nat -> T := fun n => f n.+1.
-
-Lemma mkseq0: forall (f: nat -> T),
-  mkseq f 0 = [::].
-Proof. done. Qed.
-
-Lemma mkseqSr: forall (f: nat -> T) n,
-  mkseq f n.+1 = (f 0) :: mkseq (fun_succ f) n.
-Proof.
-  move => f; elim => [//|n IH].
-  by rewrite mkseqS IH mkseqS rcons_cons.
-Qed.
 
 Lemma Bar_mkseq: forall P l,
   Bar P l -> forall (f: nat -> T), exists n, P (l ++ mkseq f n).
@@ -547,17 +669,9 @@ Proof.
   by exists n.
 Qed.
 
-End BarPredicates.
 
 Section BarClassicalEquivalence.
 From Stdlib Require Import Classical ChoiceFacts.
-
-(* TODO: rewrite with classically *)
-Search classically.
-Print classically.
-Locate classically.
-
-Context {T : Type}.
 
 Lemma not_Bar_spec: forall {P} {l: seq T},
    ~ (Bar P l) -> ~ (P l) /\ exists a, ~ (Bar P (rcons l a)).
@@ -643,6 +757,8 @@ Qed.
 
 End BarClassicalEquivalence.
 
+End BarPredicates.
+
 (*|
 
 Wellness
@@ -695,13 +811,10 @@ Proof.
 
 Qed.
 
-Definition descending (l: seq T): Prop :=
-  pairwise (fun a b => b <_R a) l.
-
 Hypothesis Htrans: transitive R.
 
 Lemma Well_wf': forall a0 l,
-  Bar has_ascending_pair l -> descending l -> Acc (Lt R) (last a0 l).
+  Bar has_ascending_pair l -> descending R l -> Acc (Lt R) (last a0 l).
 Proof.
   move => a0 l; elim => [{}l|].
   - move => /(has_ascending_pairP a0) [i [j [Hi [Hj Hij]]]]
@@ -714,7 +827,7 @@ Proof.
       first by apply IH.
     rewrite last_rcons; apply Acc_intro => b Hb.
     move: (IH b) => {}IH; rewrite last_rcons in IH.
-    apply IH; rewrite /descending pairwise_rcons H andbC /=.
+    apply IH; rewrite descending_rcons H andbC /=.
     elim/last_ind: l H {IH} => [/= _|l c IH];
       first by rewrite Hb.
     rewrite /descending !pairwise_rcons all_rcons =>
