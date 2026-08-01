@@ -554,6 +554,8 @@ From Stdlib Require Import Classical ChoiceFacts.
 
 (* TODO: rewrite with classically *)
 Search classically.
+Print classically.
+Locate classically.
 
 Context {T : Type}.
 
@@ -732,8 +734,75 @@ Qed.
 
 End WellQuasiOrder.
 
-Print pairwise.
-Search pairwise.
+(* We follow
+Higman’s Lemma and Its Computational Content
+by 
+Helmut Schwichtenberg, Monika Seisenberger and Franziskus Wiesnet
+*)
+
+Section Forest.
+(*
+   The idea of the constructive proof that
+   Well <= implies Well <=^* is to consider a sequence
+   S = [:: w_1, ..., w_n] of words w_i: seq T.
+   Clearly, if some w_i is empty, then any extension of
+   S of the right will contain an ascending pair, so
+   S is barred and we are done.
+   Otherwise, we can write w_i = a_i::v_i for some letter a_i
+   and sequence v_i.
+
+   We *would like* to say something like: the sequence
+   a_i must have an ascending pair and therefore so does
+   w_i, but this is not true. Instead we can try to seek a
+   contradiction another way.
+
+   We will consider all possible strictly decreasing subsequences
+   a_{i_1} > a_{i_2} > ... > a_{i_k}, the key idea of the proof
+   will be to show that the length of such sequences is
+   bounded (immediate since we assume T is well-founded)
+   and that the number of such distinct subsequences is also
+   bounded (this is the hard part).
+
+   We will store these sequences in a forest datastructure,
+   and prove that these forests are barred, with respect to
+   a certain function.
+
+   A prior formalization along the same lines has been carried out in
+   Rocq, but is not actively maintained at the moment:
+
+   https://github.com/rocq-archive/higman-s
+
+*)
+
+Context {T: Type}.
+
+End Forest.
+
+Section HigmanIsWell.
+
+Context {T: Type}.
+Variable (R: rel T).
+
+(* Idea begin bigcons: concatenate every element of l to
+   the corresponding element of L. *)
+Definition bigcons (l: seq T) (L: seq (seq T)): seq (seq T) :=
+   [seq x.1::x.2 | x <- (zip l L)].
+
+(* TODO: this is wrong, do the forest approach, see above. *)
+Theorem HigmanLeqDecWell':
+   forall l, Bar (has_ascending_pair R) l ->
+   forall L,
+      Bar (has_ascending_pair (HigmanLeqDec R)) (bigcons l L).
+Proof.
+   move => l; elim => [{}l H|].
+Admitted.
+
+Theorem HigmanLeqDecWell:
+   Well R -> Well (HigmanLeqDec R).
+Proof.
+Admitted.
+
+End HigmanIsWell.
 
 
 (*|
