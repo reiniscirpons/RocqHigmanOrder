@@ -31,6 +31,7 @@ well-quasi-orders we recommend the lecture notes for the course
 
 |*)
 
+
 (*|
 
 About this document
@@ -602,9 +603,8 @@ Context {T: Type}.
 Variable (R: rel T).
 
 (* We can declare a section hypothesis, in this case we require that
-   the base order R is reflexive and transitive and that the
+   the base order R is transitive and that the
    corresponding strict order is well-founded. *)
-Hypothesis Hrefl: reflexive R.
 Hypothesis Htrans: transitive R.
 Hypothesis Hwf: (well_founded (Lt R)).
 
@@ -673,10 +673,11 @@ Qed.
 Section BarClassicalEquivalence.
 From Stdlib Require Import Classical ChoiceFacts.
 
-Lemma not_Bar_spec: forall {P} {l: seq T},
-   ~ (Bar P l) -> ~ (P l) /\ exists a, ~ (Bar P (rcons l a)).
+Lemma not_BarP: forall {P} {l: seq T},
+   ~ (Bar P l) <-> ~ (P l) /\ exists a, ~ (Bar P (rcons l a)).
 Proof.
-  move => P l H; split => [Hfalso | ];
+  move => P l; split => [H|[Hl [a Ha]] [//|//]].
+  split => [Hfalso | ];
     first by apply /H /Bar_nil.
   apply not_all_ex_not => Hfalso. (* This uses excluded middle *)
   by apply /H /Bar_cons.
@@ -691,7 +692,7 @@ Proof.
    move => P l.
    case: (classic (Bar P l)); (* Excluded middle *)
      first by exists [::].
-   move/not_Bar_spec => [_ [a H]].
+   move/not_BarP => [_ [a H]].
    exists (rcons l a) => _.
    by exists a.
 Qed.
@@ -743,7 +744,7 @@ Proof.
        first by rewrite size_rcons IHsize.
      by rewrite nth_last last_rcons.
    - exists g => n.
-     by move: (IHg n) => [_ [-> /not_Bar_spec []]].
+     by move: (IHg n) => [_ [-> /not_BarP []]].
 Qed.
 
 Theorem Bar_nil_mkseqR: forall P,
@@ -869,6 +870,7 @@ Section Forest.
    w_i, but this is not true. Instead we can try to seek a
    contradiction another way.
 
+   TODO: this is wrong, fix, actually look at ascending sequences.
    We will consider all possible strictly decreasing subsequences
    a_{i_1} > a_{i_2} > ... > a_{i_k}, the key idea of the proof
    will be to show that the length of such sequences is
@@ -888,6 +890,58 @@ Section Forest.
 *)
 
 Context {T: Type}.
+Variable (R: rel T).
+
+Inductive AscendingTree :=
+| AT_node: T -> seq T -> seq AscendingTree -> AscendingTree.
+
+Definition AT_leq (t1 t2: AscendingTree) :=
+  match t1, t2 with
+  | AT_node a1 _ _, AT_node a2 _ _ => a1 <=_R a2
+  end.
+
+Fixpoint AT_meld (t1 t2: AscendingTree) {struct t1}: AscendingTree :=
+  match t1, t2 with
+  | AT_node a1 w1 f1, AT_node a2 w2 f2 =>
+    if a1 <=_R a2 then
+      if (has (fun t1' => AT_leq t1' t2) f1) then
+        AT_node a1 w1 [seq (AT_meld t1' t2) | t1' <- f1]
+      else
+        AT_node a1 w1 (rcons f1 t2)
+    else
+      t1
+  end.
+
+(* Each entry (w, None) indicates that either w is empty, or
+   the first letter of w is an element of an earlier
+   ascending tree. *)
+(* Each entry (w, Some t) indicates that the first
+   letter of w begins a new maximal ascending chain
+   (in particular it is either incomparable or strictly less
+    than every preceeding word in the sequence). *)
+Definition AscendingForest := seq (seq T * option AscendingTree).
+
+Fixpoint AF_update (make_tree: bool) (f: AscendingForest) (w: seq T) :=
+  match f, w with
+  | _, [::] => rcons f (w, None)
+  | [::], b :: v =>
+    if make_tree then 
+      [:: (w, Some (AT_node b v [::]))]
+    else
+      [:: (w, None)]
+  | (w', None) :: f', _ => (w', None) :: AF_update make_tree f' w
+  | (w', Some t) :: f', b :: v => 
+    match t with
+    | AT_node a _ _ =>
+      if a <=_R b then
+        (w', Some (AT_meld t (AT_node b v [::]))) :: AF_update false f' w
+      else
+        (w', Some t) :: AF_update make_tree f' w
+    end
+  end.
+
+Definition AF_build (ws: seq (seq T)) :=
+  foldl (AF_update true) [::] ws.
 
 End Forest.
 
