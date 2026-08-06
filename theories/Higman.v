@@ -418,7 +418,7 @@ Proof.
   -- apply /andP; split; first (apply /orP; right); apply/negP;
      move/HigmanLeqDec_size; move/HigmanLeqDec_size in Huv => /=;
       first by rewrite ltn_geF.
-     by rewrite leq_gtF => [//|]; apply ltnW.
+     by rewrite leq_gtF => [|//]; apply ltnW.
   -- apply/andP; split; first by apply /orP; left.
      apply /negP => /HigmanLeqDec_size /=.
      by move/HigmanLeqDec_size in Huv; rewrite ltn_geF.
@@ -580,7 +580,7 @@ Proof.
   - move: (Hdcc f) => [n] /negP Hfalso.
     apply /Hfalso.
     rewrite /descending -sorted_pairwise => [|];
-      last by apply /rev_trans /lt_transitive.
+      first by apply /rev_trans /lt_transitive.
     apply /(sortedP a) => i.
     rewrite size_mkseq => Hi.
     by rewrite !nth_mkseq => [//||//]; apply ltn_trans with i.+1.
@@ -806,10 +806,9 @@ Proof.
   move/Bar_nil_mkseq => H a0 f.
   move: (H f) => [n /(has_ascending_pairP a0) [i [j [Hi []]]]].
   rewrite size_mkseq => Hj.
-  rewrite !nth_mkseq => [Hij|//|];
-    last by apply ltn_trans with j.
+  rewrite !nth_mkseq => [|//|Hij];
+    first by apply ltn_trans with j.
   by exists i; exists j.
-
 Qed.
 
 Hypothesis Htrans: transitive R.
@@ -835,7 +834,7 @@ Proof.
       /andP [/andP [Hac Hal] /andP [_ Hl]].
     rewrite !all_rcons andbA [_ && (_ <_R _)]andbC
             -andbA -all_rcons IH;
-      last by rewrite /descending pairwise_rcons Hal Hl.
+      first by rewrite /descending pairwise_rcons Hal Hl.
     rewrite andbC /=; apply lt_leq_lt with a => [//|//|].
     by move/andP: Hac => [].
 Qed.

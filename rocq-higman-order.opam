@@ -1,0 +1,23 @@
+opam-version: "2.0"
+maintainer: "reinis.cirpons@inria.fr"
+version: "dev"
+
+homepage: "https://github.com/RocqHigmanOrder"
+dev-repo: "git+https://github.com/reiniscirpons/RocqHigmanOrder.git"
+bug-reports: "https://github.com/reiniscirpons/RocqHigmanOrder/issues"
+license: "CeCILL-B"
+
+synopsis: "A formalization of the theory of well-quasi-orders in Rocq"
+description: """
+This project aims to formalize the theory of well-quasi-orders."""
+
+build: [make "-j%{jobs}%"]
+install: [make "install"]
+depends: [
+  "rocq-core" {>= "9.2.0"}
+  "rocq-mathcomp-boot" {>= "2.6.0"}
+]
+
+authors: [
+  "Reinis Cirpons"
+]
