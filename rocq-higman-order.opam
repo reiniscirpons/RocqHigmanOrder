@@ -15,6 +15,7 @@ build: [make "-j%{jobs}%"]
 install: [make "install"]
 depends: [
   "rocq-core" {>= "9.2.0"}
+  "rocq-stdlib" {>= "9.2.0"}
   "rocq-mathcomp-boot" {>= "2.6.0"}
 ]
 
