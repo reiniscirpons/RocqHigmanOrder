@@ -46,11 +46,13 @@ jobs:
         python3 -m pip install alectryon
 
     - name: build website
+      if: github.event_name == 'push'
       run: |
         eval $(opam env)
         make html
 
     - name: Save artifact
+      if: github.event_name == 'push'
       uses: actions/upload-artifact@v4
       with:
         path: html
