@@ -1213,6 +1213,31 @@ Qed.
 
 End WellQuasiOrder.
 
+Section NatWell.
+
+Print leq.
+
+Lemma nat_is_well': forall a l,
+  Bar (has_ascending_pair leq) (rcons l a).
+Proof.
+  elim/ltn_ind => n IH l.
+  apply Bar_cons => m.
+  case Hmn: (m < n).
+  - by apply IH.
+  - apply /Bar_nil /(has_ascending_pairP _ 0).
+    exists (size l); exists (size l).+1;
+    split => [//|]; split;
+      first by rewrite !size_rcons.
+    rewrite !nth_rcons !size_rcons ltnS leqnn !ltnn !eq_refl.
+    by move: (leqVgt n m); rewrite Hmn orbC /=.
+Qed.
+
+Lemma nat_is_well: Well leq.
+Proof.
+  by apply Bar_cons => a; apply nat_is_well'.
+Qed.
+End NatWell.
+
 (* We follow
 Higman’s Lemma and Its Computational Content
 by 
