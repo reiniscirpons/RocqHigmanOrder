@@ -1,0 +1,146 @@
+..
+  Adapted from https://github.com/LPCIC/coq-elpi
+
+.. raw:: html
+
+   <script>
+   var style = document.createElement('style'); 
+   style.textContent = `
+     table.docinfo {
+        border-top: none;
+        border-bottom: none;
+        margin: auto;
+     }
+     #alectryon-toggle-0 {
+        display: none;
+     }
+     label[for="alectryon-toggle-0"] {
+        display: none;
+     }
+     .alectryon-io {
+        border-left-style: dotted;
+        border-left-color: lightgrey;
+        padding-left: 1em;
+        margin-left: 1em;
+     }
+     pre.alectryon-block {
+        padding-left: 1em;
+     }
+     label.alectryon-input.alectryon-failed {
+        text-decoration: red wavy underline;
+     }
+     .alectryon-io label.alectryon-input::after , .alectryon-banner .alectryon-bubble::before {
+       content: '';
+       background: url("data:image/svg+xml,%3Csvg width='14' height='14' viewBox='0 0 3.704 3.704' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill-rule='evenodd' stroke='%23000' stroke-width='.264'%3E%3Cpath d='M.794.934h2.115M.794 1.463h1.455M.794 1.992h1.852'/%3E%3C/g%3E%3Cpath d='M.132.14v2.646h.794v.661l.926-.661h1.72V.14z' fill='none' stroke='%23000' stroke-width='.265'/%3E%3C/svg%3E") top right no-repeat;
+       height: 14px;
+       width: 14px;
+       border-style: none;
+       border-radius: 0px;
+     }
+     div.warning , div.important, div.note, div.tip {
+        border-style: solid;
+        border-color: lightgrey;
+        border-width: 0.1em;
+        border-radius: 0.5em
+     }
+     .ghref {
+       cursor: help;
+       text-decoration: underline dotted;
+       font-family: 'Iosevka Slab Web', 'Iosevka Web', 'Iosevka Slab', 'Iosevka', 'Fira Code', monospace;
+       font-feature-settings: "XV00" 1; /* Use Coq ligatures when Iosevka is available */
+       line-height: initial;
+     }
+
+     .admonition-title:after { content: ":" }
+     .admonition-title { display: inline; margin-right: 0.5em }
+     .admonition-title + p { display: inline }
+
+     .important .admonition-title { color: rgb(197, 70, 91) }
+     .important { background-color: rgb(272, 237, 243) }
+
+     .note .admonition-title { color: rgb(42, 134, 57) }
+     .note { background-color: rgb(222, 247, 222); }
+
+     p {
+       text-align: justify;
+       text-justify: inter-word;
+     }
+
+      h1 {
+         font-size: 28px;
+         font-weight: 500;
+         letter-spacing: 0;
+         line-height: 1.5em;
+         padding-bottom: 15px;
+         position: relative;
+         font-family: "Gill Sans Extrabold", sans-serif;
+      }
+      h1:before {
+         content: "";
+         position: absolute;
+         left: 0;
+         bottom: 0;
+         height: 5px;
+         width: 55px;
+         background-color: #111;
+      }
+      h1:after {
+         content: "";
+         position: absolute;
+         left: 0;
+         bottom: 2px;
+         height: 1px;
+         width: 95%;
+         background-color: #333;
+      }
+
+      h2 {
+         font-size: 24px;
+         font-weight: 500;
+         letter-spacing: 0;
+         line-height: 1.5em;
+         padding-bottom: 15px;
+         position: relative;
+         font-family: "Gill Sans Extrabold", sans-serif;
+      }
+      h2:before {
+         content: "";
+         position: absolute;
+         left: 0;
+         bottom: 0;
+         height: 3px;
+         width: 55px;
+         background-color: #111;
+      }
+      h2:after {
+         content: "";
+         position: absolute;
+         left: 0;
+         bottom: 2px;
+         height: 1px;
+         width: 95%;
+         background-color: #333;
+      }
+
+      h3 {
+         font-size: 20px;
+         font-weight: 500;
+         letter-spacing: 0;
+         line-height: 1.5em;
+         padding-bottom: 15px;
+         position: relative;
+         font-family: "Gill Sans Extrabold", sans-serif;
+      }
+      h3:after {
+         content: "";
+         position: absolute;
+         left: 0;
+         bottom: 2px;
+         height: 1px;
+         width: 95%;
+         background-color: #333;
+      }
+   `; 
+   document.getElementsByTagName('head')[0].appendChild(style); 
+
+   </script>

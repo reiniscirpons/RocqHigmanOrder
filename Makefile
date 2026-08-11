@@ -18,11 +18,12 @@ clean: Makefile.coq
 Makefile.coq: _CoqProject
 	$(COQBIN)rocq makefile -f $< -o $@
 
+_CoqProject:
 
 %: Makefile.coq
 	$(MAKE) -f $< $@
 
-html: $(OUTPUTS)
+html: $(OUTPUTS) ./assets/alectryon_style.rst
 
 $(OUTDIR)/%.html: $(INDIR)/%.v
 	alectryon --frontend coq+rst --backend webpage $< -o $@
