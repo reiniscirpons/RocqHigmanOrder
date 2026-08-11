@@ -1,0 +1,58 @@
+name: Compile webpage
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Make and deploy website
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: workaround bug
+      run: sudo apt-get update
+
+    - name: checkout
+      uses: actions/checkout@v3
+
+    - name: setup ocaml
+      uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: 4.14.2
+
+    - name: install deps
+      run: |
+        export OPAMYES=true
+        opam repo add coq https://coq.inria.fr/opam/released
+        opam repo add coq-dev https://coq.inria.fr/opam/core-dev
+        opam repo add extra-dev https://coq.inria.fr/opam/extra-dev
+        opam update
+        opam install .
+        sudo apt-get update
+        sudo apt-get install python3-pip -y
+        python3 -m pip install alectryon
+
+    - name: build website
+      run: make html
+
+    - name: Save artifact
+      uses: actions/upload-artifact@v4
+      with:
+        path: html
+
+    - name: Deploy to GitHub Pages
+      if: github.event_name == 'push'
+      id: deployment
+      uses: actions/deploy-pages@v4
