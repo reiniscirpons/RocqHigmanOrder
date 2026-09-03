@@ -67,7 +67,7 @@ boilerplate below.
 
 From Stdlib Require Import Btauto.
 Require Import ssreflect ssrbool ssrfun.
-From mathcomp Require Import ssrnat seq choice eqtype path. (* .no-messages *)
+From mathcomp Require Import ssrnat seq choice eqtype path zify. (* .no-messages *)
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -1012,10 +1012,9 @@ Section BarPredicates.
 
 Context {T: Type}.
 
-(* Idea: less than 10 example *)
 Inductive Bar (P: seq T -> Prop) (l: seq T): Prop :=
 | Bar_nil: P l -> Bar P l
-| Bar_cons: (forall a, Bar P (rcons l a)) -> Bar P l.
+| Bar_rcons: (forall a, Bar P (rcons l a)) -> Bar P l.
 
 
 Lemma Bar_mkseq: forall P l,
@@ -1046,7 +1045,7 @@ Proof.
   split => [Hfalso | ];
     first by apply /H /Bar_nil.
   apply not_all_ex_not => Hfalso. (* This uses excluded middle *)
-  by apply /H /Bar_cons.
+  by apply /H /Bar_rcons.
 Qed.
 
 Definition not_Bar_rcons (P: seq T -> Prop) l l': Prop:= 
@@ -1138,12 +1137,29 @@ Section WellQuasiOrder.
 Context {T: Type}.
 Variable (R: rel T).
 
-
 Fixpoint has_ascending_pair (l: seq T): bool :=
   match l with
   | [::] => false
-  | a::l' => (has (R a) l') || has_ascending_pair l'
+  | a::l' => has (R a) l' || has_ascending_pair l'
   end.
+
+Definition lowered l a: bool := has (R^~ a) l.
+
+Lemma lowered_rconsE: forall l a b,
+  lowered (rcons l a) b = R a b || lowered l b.
+Proof.
+  move => l a b.
+  by rewrite /lowered has_rcons.
+Qed.
+
+Lemma has_ascending_pair_rconsE: forall a l,
+  has_ascending_pair (rcons l a) =
+  lowered l a || has_ascending_pair l.
+Proof.
+  move => a l;
+  elim: l a => [//|a l IH b /=].
+  by rewrite IH has_rcons /is_true; btauto.
+Qed.
 
 Search has nth.
 
@@ -1177,13 +1193,63 @@ Proof.
   by exists i; exists j.
 Qed.
 
+End WellQuasiOrder.
+
+Section NatIsWell.
+
+Print leq.
+
+Lemma nat_is_well': forall a l,
+  Bar (has_ascending_pair leq) (rcons l a).
+Proof.
+  elim/ltn_ind => n IH l.
+  apply Bar_rcons => m.
+  case Hmn: (m < n).
+  - by apply IH.
+  - apply /Bar_nil /(has_ascending_pairP _ 0).
+    exists (size l); exists (size l).+1;
+    split => [//|]; split;
+      first by rewrite !size_rcons.
+    rewrite !nth_rcons !size_rcons ltnS leqnn !ltnn !eq_refl.
+    by move: (leqVgt n m); rewrite Hmn orbC /=.
+Qed.
+
+Lemma nat_is_well: Well leq.
+Proof.
+  by apply Bar_rcons => a; apply nat_is_well'.
+Qed.
+End NatIsWell.
+
+Section AntichainCondition.
+
+(*|
+This section proves an equivalent characterization in terms of 
+well-foundedness and antichains.
+
+
+In particular our aim is to show that being a well-quasi order
+is equivalent to being well-founded and having no infinite antichains.
+|*)
+
+Context {T: Type}.
+Variable (R: rel T).
+
+
+(*|
+First we show that being a well-quasi order implies being well-founded.
+In order to do so we need to assume that :math:`R` is transitive.
+Furthermore, we show an intermediate generalization which shows that
+the final element of any descending sequence that is barred on having
+an ascending pair is accessible.
+|*)
+
 Hypothesis Htrans: transitive R.
 
 Lemma Well_wf': forall a0 l,
-  Bar has_ascending_pair l -> descending R l -> Acc (Lt R) (last a0 l).
+  Bar (has_ascending_pair R) l -> descending R l -> Acc (Lt R) (last a0 l).
 Proof.
   move => a0 l; elim => [{}l|].
-  - move => /(has_ascending_pairP a0) [i [j [Hi [Hj Hij]]]]
+  - move => /(has_ascending_pairP R a0) [i [j [Hi [Hj Hij]]]]
             /(pairwiseP a0) H.
     exfalso.
     enough (Hfalso: nth a0 l j <_R nth a0 l i);
@@ -1205,38 +1271,377 @@ Proof.
     by move/andP: Hac => [].
 Qed.
     
-Lemma Well_wf: Well -> well_founded (Lt R).
+Lemma Well_wf: Well R -> well_founded (Lt R).
 Proof.
   move => /Well_wf' Hwell a.
   by apply Hwell.
 Qed.
 
-End WellQuasiOrder.
+(*|
+We now turn our attention to antichains.
 
-Section NatWell.
+Two elements :math:`x, y` are incomparable if neither
+:math:`x \leq y` nor :math`y \leq x` holds. An antichain is a sequence of
+mutually incomparable elements.
+|*)
+Definition incomparable (x y: T): bool := ~~ (x <=_R y) && ~~ (y <=_R x).
+Definition antichain (l: seq T): bool := pairwise incomparable l.
 
-Print leq.
-
-Lemma nat_is_well': forall a l,
-  Bar (has_ascending_pair leq) (rcons l a).
+(*|
+Since we will be dealing with negations of antichains, we prove
+a helpful lemma characterizing the negation of the pairwise condition.
+|*)
+Lemma pairwisePn {r: rel T}: forall (a0: T) (l: seq T),
+  reflect
+  (exists i j,
+    i < j /\ j < size l /\ ~~ r (nth a0 l i) (nth a0 l j))
+  (~~ pairwise r l).
 Proof.
-  elim/ltn_ind => n IH l.
-  apply Bar_cons => m.
-  case Hmn: (m < n).
-  - by apply IH.
-  - apply /Bar_nil /(has_ascending_pairP _ 0).
-    exists (size l); exists (size l).+1;
-    split => [//|]; split;
-      first by rewrite !size_rcons.
-    rewrite !nth_rcons !size_rcons ltnS leqnn !ltnn !eq_refl.
-    by move: (leqVgt n m); rewrite Hmn orbC /=.
+  move => a0 l.
+  apply (iffP idP) => [|[i [j [Hi [Hj Hij]]]]].
+  - elim: l => [//|a l IH].
+    rewrite pairwise_cons negb_and => /orP [|/IH [i [j [Hi [Hj Hij]]]]].
+    + rewrite -has_predC => /(has_nthP a0) [i Hi /= Ha].
+      by exists 0; exists i.+1.
+    + by exists i.+1; exists j.+1.
+  - apply /(pairwiseP a0) => H.
+    move: Hij.
+    by rewrite H => [|//|//|//]; apply ltn_trans with j.
 Qed.
 
-Lemma nat_is_well: Well leq.
+(*|
+The proof that wellness implies not infinite antichains is fairly
+straightforward, though we do need to assume that T is not empty
+(this assumption can likely be discarded with some more effort,
+but we skip it for now).
+|*)
+Lemma Well_Bar_antichain': forall l (a0: T),
+  Bar (has_ascending_pair R) l -> Bar (fun l' => ~~ antichain l') l.
 Proof.
-  by apply Bar_cons => a; apply nat_is_well'.
+  move => l a0; elim => {}l.
+  - move/(has_ascending_pairP R a0) => [i [j [Hi [Hj Hij]]]].
+    apply /Bar_nil /(pairwiseP a0) => H.
+    have: (incomparable (nth a0 l i) (nth a0 l j)).
+    + apply H => [|//|//]; by apply ltn_trans with j.
+    + by rewrite /incomparable Hij.
+  - move => _ IH;
+    by apply /Bar_rcons /IH.
 Qed.
-End NatWell.
+
+Lemma Well_Bar_antichain: forall (a0: T),
+  Well R -> Bar (fun l' => ~~ antichain l') [::].
+Proof.
+  move => a /(Well_Bar_antichain' a) H.
+  by apply H.
+Qed.
+
+
+(*|
+Now for the opposite direction: well-founded + barred on no antichains
+implies well.
+|*)
+
+(*| TODO |*)
+Lemma Bar_has_ascending_pair_cons: forall a l,
+  Bar (has_ascending_pair R) l -> Bar (has_ascending_pair R) (a::l).
+Proof.
+  move => a l; elim =>
+    [{}l /(has_ascending_pairP R a) [i [j [Hi [Hj Hij]]]]|{}l _ IH].
+  - apply /Bar_nil /(has_ascending_pairP R a).
+    by exists i.+1; exists j.+1.
+  - apply Bar_rcons => a'.
+    by rewrite rcons_cons.
+Qed.
+
+Lemma Bar_has_ascending_pair_rcons: forall a l,
+  Bar (has_ascending_pair R) l -> Bar (has_ascending_pair R) (rcons l a).
+Proof.
+  move => a l H; elim: H a =>
+    [{}l H a|{}l //].
+  - move/(has_ascending_pairP R a): H => [i [j [Hi [Hj Hij]]]].
+    apply /Bar_nil /(has_ascending_pairP R a).
+    exists i; exists j.
+    split => [//|]; split => /=.
+    + by rewrite size_rcons; apply ltn_trans with (size l).
+    + have: (i < size l) => [|Hi'];
+        first by apply ltn_trans with j.
+      by rewrite !nth_rcons Hi' Hj.
+Qed.
+
+Lemma Bar_has_ascending_pair_catl: forall t l,
+  Bar (has_ascending_pair R) l -> Bar (has_ascending_pair R) (l ++ t).
+Proof.
+  elim/last_ind => [l|t a IH l /IH {IH}].
+  - by rewrite cats0.
+  - case => IH.
+    + apply/Bar_nil.
+      by rewrite -rcons_cat has_ascending_pair_rconsE IH orbC.
+    + by rewrite -rcons_cat; apply IH.
+Qed.
+
+Lemma Bar_has_ascending_pair_middle: forall (a0: T) s t l,
+  Bar (has_ascending_pair R) (s ++ t) ->
+  Bar (has_ascending_pair R) (s ++ l ++ t).
+Proof.
+  move => a0 s t l.
+  set st := (s ++ t).
+  have: (st = s ++ t) => [//|].
+  move: s t st => s t st Hst H.
+  elim: H s t l Hst => [{}st /(has_ascending_pairP _ a0)|{}st _ IH s t l Hl].
+  - move => [i [j [Hi [Hj Hij]]]] s t l Hst.
+    rewrite Hst in Hij, Hj.
+    apply /Bar_nil /(has_ascending_pairP _ a0). 
+    case His: (i < size s); case Hjs: (j < size s).
+    + exists i; exists j.
+      move: Hij;
+      rewrite !size_cat !nth_cat His Hjs => ->.
+      split=> [//|]; split => [|//]; by lia.
+    + exists i; exists (size l + j).
+      move: Hij.
+      rewrite !size_cat !nth_cat His Hjs.
+      have: ((size l + j < size s) = false) => [|->]; first by lia.
+      have: ((size l + j - size s < size l) = false) => [|->]; first by lia.
+      have: (size l + j - size s - size l = j - size s) => [|->]; first by lia.
+      move => ->.
+      split; first by lia.
+      split => [|//]; rewrite size_cat in Hj; by lia.
+    + by lia.
+    + exists (size l + i); exists (size l + j).
+      rewrite size_cat in Hj.
+      move: Hij;
+      rewrite !size_cat !nth_cat His Hjs.
+      have: ((size l + i < size s) = false) => [|->]. by lia.
+      have: ((size l + i - size s < size l) = false) => [|->]. by lia.
+      have: ((size l + j < size s) = false) => [|->]. by lia.
+      have: ((size l + j - size s < size l) = false) => [|->]. by lia.
+      have: ((size l + i - size s - size l) = i - size s) => [|->]. by lia.
+      have: ((size l + j - size s - size l) = j - size s) => [|->]. by lia.
+      move => ->.
+      split; first by lia.
+      split => [|//]; by lia.
+  - apply Bar_rcons => a.
+    rewrite !rcons_cat; apply IH with a.
+    by rewrite -rcons_cat -Hl.
+Qed.
+
+(* TODO(reiniscirpons): prove this. Maybe use intermediate step about
+   infinite ascending subsequences, but not sure how to state nicely. *)
+Lemma Wf_Bar_antichain_Well': forall (a0: T),
+  well_founded (Lt R) ->
+  forall l,
+  Bar (fun l' => ~~ antichain l') l ->
+  Bar (has_ascending_pair R) l.
+Proof.
+  move => a0 Hwf l; elim => [{}l /(pairwisePn a0) [i [j [Hi [Hj]]]]|].
+  - rewrite negb_and !negbK => /orP [Hij|].
+    + apply /Bar_nil /(has_ascending_pairP R a0).
+      by exists i; exists j.
+    + elim/last_ind: l i j Hi Hj => [//|l a IH i j].
+      case Hj: (j < size l).
+      * move => Hi _.
+        have: (i < size l) => [|Hi'];
+          first by apply ltn_trans with j.
+        rewrite !nth_rcons Hj Hi' => Hij.
+        by apply /Bar_has_ascending_pair_rcons /(IH i j).
+      * rewrite size_rcons !nth_rcons => Hi.
+        rewrite ltnS leq_eqVlt Hj orbC /= => {}Hj.
+        rewrite Hj; move/eqP in Hj; rewrite Hj in Hi.
+        rewrite Hi => {j Hj IH}.
+        elim/(well_founded_ind Hwf): a l i Hi.
+Admitted.
+End AntichainCondition.
+
+
+(*|
+Dickson's lemma
+===============
+
+In this section we give a proof of Dickson's lemma as a warm up for
+Higman's lemma. Dicksons lemma states that the product of two
+well-quasi-orders is also a well-quasi order.
+
+|*)
+
+Section DicksonIsWell.
+
+(*| We start with two carrier types and two orders. |*)
+Context {T1 T2: Type}.
+Variable (Rx: rel T1) (Ry: rel T2).
+
+(*|
+The product order simply compares each compoenent with the respective
+order.
+|*)
+Definition ProductLeq (u v: T1 * T2): bool :=
+  match u, v with
+  | (x1, y1), (x2, y2) => (x1 <=_Rx x2) && (y1 <=_Ry y2)
+  end.
+
+Notation "u  <=^p  v" := (ProductLeq u v) (at level 70).
+
+(*|
+The definitions of 
+
+:math:`\theta` is the same as the :math:`\text{Ge}_\exists` function
+from the 
+
+|*)
+
+Definition theta lx ly lxy := 
+  (has_ascending_pair Rx lx) ||
+  (has_ascending_pair Ry ly) ||
+  (has_ascending_pair ProductLeq lxy) ||
+  (has (fun z => lowered Rx lx (fst z)) lxy) ||
+  (has (fun z => lowered Ry ly (snd z)) lxy).
+
+Local Lemma theta_consl: forall lx ly z h l,
+  (forall u,
+    Rx (fst z) (fst u) ->
+    Bar (theta lx ly) (rcons (z::l) u)) ->
+  Bar (theta (rcons lx (fst z)) ly) h ->
+  Bar (theta lx ly) (z::l++h).
+Proof.
+  move => lx ly z h l H.
+  elim => [{}h|{}h _ IH].
+  - move => /orP [/orP [/orP [/orP [|]|/(has_ascending_pairP _ z)]|]|] Hh.
+    (* Either z is lowered, or lx has an ascending pair *)
+    + rewrite has_ascending_pair_rconsE in Hh.
+      case/orP: Hh => Hh; apply Bar_nil.
+      * rewrite /theta.
+        apply /orP; left; apply/orP; right.
+        by rewrite /= Hh.
+      * by rewrite /theta Hh.
+    (* Trivial case *)
+    + apply Bar_nil; rewrite /theta Hh /is_true; by btauto.
+    (* Trivial case *)
+    + apply Bar_nil; rewrite /theta.
+      apply /orP; left; apply /orP; left; apply /orP; right.
+      apply /(has_ascending_pairP _ z).
+      move: Hh => [i [j [Hi [Hj Hij]]]].
+      exists ((size l).+1 + i); exists ((size l).+1 + j).
+      split; first by lia.
+      rewrite /= size_cat; split; first by lia.
+      rewrite !nth_cat.
+      case: ifP => [|_]; first by lia.
+      case: ifP => [|_]; first by lia.
+      by rewrite !subDnCA // subnn !addn0.
+    (* Either z is less than some pair in h, or we are lowered in lx.
+       In the second case we are immediately done, since theta holds.
+       In the first case, we need to decompose h and use the fact that 
+       has_ascending_pair is monotone. *)
+    + move/(has_nthP z): Hh => [i Hi].
+      rewrite lowered_rconsE => /orP [|] Hh.
+      * rewrite -[h](cat_take_drop i.+1) (take_nth z) //.
+        rewrite catA.
+        (* TODO(reiniscirpons): We need to prove a lemma
+        that allows us to pass to subsequences when the relation being
+        barred is monotone, and then prove that theta is
+        monotone. *)
+        admit.
+      * apply Bar_nil; rewrite /theta.
+        apply /orP; left; apply /orP; right.
+        apply /(has_nthP z).
+        exists ((size l).+1 + i); first by rewrite /= size_cat; lia.
+        rewrite /= nth_cat; case: ifP => [|_]; first by lia.
+        by rewrite subDnCA // subnn addn0.
+    (* Trivial case *)
+    + apply Bar_nil; rewrite /theta.
+      apply /orP; right.
+      apply /(has_nthP z).
+      move/(has_nthP z): Hh => [i Hi Hi'].
+      exists ((size l).+1 + i); first by rewrite /= size_cat; lia.
+      rewrite /= nth_cat; case: ifP => [|_]; first by lia.
+      by rewrite subDnCA // subnn addn0.
+    (* Trivial case *)
+    + apply Bar_rcons => a.
+      by rewrite rcons_cons rcons_cat.
+Admitted.
+
+
+Local Lemma theta_consr: forall lx ly z l,
+  Bar (theta (rcons lx (fst z)) ly) [::] ->
+  all (fun u => Rx (fst z) (fst u)) l ->
+  Bar (theta lx (rcons ly (snd z))) l ->
+  Bar (theta lx ly) (z::l).
+Proof.
+Admitted.
+
+Local Lemma theta_cons1 :
+  forall lx ly z,
+  Bar (theta (rcons lx (fst z)) ly) [::] ->
+  Bar (theta lx (rcons ly (snd z))) [::] ->
+  Bar (theta lx ly) [::z].
+Proof.
+Admitted.
+
+Local Lemma Bar_has_ascending_pair_prod lx ly :
+  Bar (has_ascending_pair Rx) lx ->
+  Bar (has_ascending_pair Ry) ly ->
+  Bar (theta lx ly) [::].
+Proof.
+Admitted.
+
+Local Lemma Bar_theta_prod_Well:
+  Bar (theta [::] [::]) [::] -> Well ProductLeq.
+Proof.
+Admitted.
+
+Theorem DicksonIsWell:
+  Well Rx -> Well Ry -> Well ProductLeq.
+Proof.
+Admitted.
+
+
+(*|
+Our choice to define :coq:`Bar` with respect to :coq:`rcons` before now
+means that we need to do some gymnastics when defining the first bad
+subsequence of a sequence.
+
+First, we define a helper function :coq:`bad_subseq'`, which keeps
+a list of all elements in the prefix leading up to the current element
+as its first argument. We can define the first bad subsequence function
+by letting the first parameter be the empty sequence.
+|*)
+
+(* TODO: I think the approach from Higman's Lemma in Type Theory is better,
+  will remove in future. *)
+
+Fixpoint bad_subseq' (pre l: seq T1): seq T1 :=
+  match l with
+  | [::] => [::]
+  | h :: l' =>
+    if all (fun x => ~~ (x <=_Rx h)) pre then
+      h :: bad_subseq' (h::pre) l'
+    else
+      bad_subseq' (h::pre) l'
+  end.
+
+Definition bad_subseq := bad_subseq' [::].
+
+Definition fsts (l: seq (T1 * T2)): seq T1 :=
+  [seq fst u | u <- l].
+
+Definition snds (l: seq (T1 * T2)): seq T2 :=
+  [seq snd u | u <- l].
+
+Scheme All for seq.
+Inductive PairTree :=
+| PairNode: seq T1 -> seq T2 -> seq PairTree -> PairTree.
+
+Definition PairForest := seq PairTree.
+
+(*Definition make_forest (l: seq (T1 * T2)): PairForest :=*)
+(*  match l with*)
+(*  | [::] => [::]*)
+(*  | p :: l' =>*)
+(*    match p with*)
+(*    | (x, y) => *)
+(*        bad_subseq (fsts l')*)
+(*    end*)
+(*  end.*)
+
+
+End DicksonIsWell.
 
 (* We follow
 Higman’s Lemma and Its Computational Content
