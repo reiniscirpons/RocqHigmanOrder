@@ -14,3 +14,4 @@ blueprint/rocq_decls
 blueprint/src/web.paux
 html/
 .DS_Store
+.lia.cache

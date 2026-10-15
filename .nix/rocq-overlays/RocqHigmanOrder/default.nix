@@ -6,7 +6,7 @@
 
 { lib, mkRocqDerivation, which, coq
   ## declare extra dependencies here, to be used in propagateBuildInputs e.g.
-  , mathcomp-boot, stdlib
+  , mathcomp-boot, stdlib, mathcomp-zify
   , version ? null }:
 
 with lib; mkRocqDerivation {

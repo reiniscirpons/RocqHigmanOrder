@@ -546,7 +546,7 @@ where "u <=^*_ R v" := (HigmanLeq R u v).
 (*|
 Here the :coq:`[::]` denotes the empty word in Rocq and
 :coq:`b::v` denotes left-concatenation of a letter to a word.
-Hence each of the construcors of :coq:`HigmanLeq` corresponds to
+Hence each of the constructors of :coq:`HigmanLeq` corresponds to
 one of the inference rules in the mathematical definition of the
 Higman embedding order:
 
@@ -1482,17 +1482,31 @@ Notation "u  <=^p  v" := (ProductLeq u v) (at level 70).
 (*|
 The definitions of 
 
-:math:`\theta` is the same as the :math:`\text{Ge}_\exists` function
-from the 
+The :coq:`lowered` function is the same as the :math:`\text{Ge}_\exists`
+function from the "Higman’s Lemma and Its Computational Content" paper.
 
+So intuitively, :math:`theta` holds whenever either of the three
+sequences :coq:`lx`, :coq:`ly` or :coq:`lxy` have an ascending pair,
+or, failing that, whenever there is an "ascending pair" with source
+in :coq`lxy` and target in either :coq:`lx` or :coq:`ly`.
 |*)
 
+(* Rx Ry ProductLeq = Rx * Ry*)
 Definition theta lx ly lxy := 
   (has_ascending_pair Rx lx) ||
   (has_ascending_pair Ry ly) ||
   (has_ascending_pair ProductLeq lxy) ||
+  (* There exists a z in lxy such that x <= fst z for some x in lx *)
   (has (fun z => lowered Rx lx (fst z)) lxy) ||
+  (* lowered *)
+  (*
+  fun (T : Type) (R : rel T) (l : seq T) (a : T) => 
+     has (fun x => R x a) l
+     : forall {T : Type}, rel T -> seq T -> T -> bool
+   *)
   (has (fun z => lowered Ry ly (snd z)) lxy).
+  Print lowered.
+
 
 Local Lemma theta_consl: forall lx ly z h l,
   (forall u,
