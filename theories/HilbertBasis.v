@@ -1,97 +1,98 @@
 From HB Require Import structures.
 Require Import ssreflect ssrbool ssrfun.
 From mathcomp Require Import ssrnat choice eqtype seq.
-From mathcomp Require Import nmodule order ssralg freeg mpoly.
+From mathcomp Require Import order ssralg mpoly.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Import Order.Def Order.Theory GRing.Theory.
+Import Order.Theory GRing.Theory.
 
-(*NOTE: Nmodule is a Rocq shorthand for an Abelian monoid.
-  It comes from the fact that each such monoid has a module
-  structure over the naturals, with scalar multiplication
-  given by repeated addition. *)
+Section GrobnerBasis.
 
-(*|
-We first define a type for ordered Abelian monoids.
-First we define a type :coq:`nmoduleOrderType` which contains all
-Abelian monoids together with a total order and a bottom element,
-but we do not impose any compatibility relations.
-|*)
-
-#[short(type="nmoduleOrderType")]
-HB.structure Definition NmoduleOrder (d : Order.disp_t) :=
-  {T of Order.BTotal d T & Algebra.Nmodule T}.
+Open Scope ring_scope.
+Variable (K:fieldType) (n: nat).
 
 (*|
-Now we turn any :coq:`nmoduleOrderType` into an ordered Abelian
-monoid by  imposing two conditions on it - namely that the order
-respects right multiplication, and that an element is the minimum
-of its right ideal. The type for ordered Abelian monoids is then
-:coq:`onmodType`.
+One step reduction of :math:`f` by :math:`g` at the monomial :math:`m`.
+Returns :math:`f` unchanged if :math:`g` is the zero polynomial or
+:math:`m` is not a multiple of the leading monomial of :math:`g`.
 |*)
+Definition red1 (m: 'X_{1..n}) (f g: {mpoly K[n]}): {mpoly K[n]} :=
+  if mleadc g == 0%R then f
+  else
+    let: lmg := mlead g in
+    let: lcg := mleadc g in
+    if (lmg <= m)%MM then
+      f - (f@_m / lcg) *: (g * 'X_[m - lmg])
+    else f.
 
-#[key=T, primitive]
-HB.mixin Record
-  NmoduleOrder_isONmodule d T & NmoduleOrder d T :=
-  {
-    le_mulrK : forall (z x y: T),
-      ((x + z)%R <= (y + z)%R)%O = (x <= y)%O;
-    mulr_le : forall (x y: T),
-      (x <= (x + y)%R)%O
-  }.
-
-#[short(type="onmodType")]
-HB.structure Definition ONmodule (d : Order.disp_t) :=
-  {T of NmoduleOrder_isONmodule d T & NmoduleOrder d T}.
-
-Section ONModuleTheory.
-Context {d: Order.disp_t}.
-Variables (G: onmodType d).
-
-Lemma onmod0x: forall (x: G), (0%R <= x)%O.
+(*|
+Importantly, single step reduction removes the monomial :math:`m`
+from :math:`f`.
+|*)
+Lemma red1_at: forall m f g,
+  (mleadc g != 0%R) ->
+  (mlead g <= m)%MM ->
+  (red1 m f g)@_m = 0%R.
 Proof.
-  move => x; move: (mulr_le 0%R x).
-  by rewrite add0r.
+  move => m f g /negP Hg Hm.
+  rewrite /red1.
+  case: ifP => [//|_].
+  rewrite Hm mcoeffD mcoeffN mcoeffZ. 
+  have: (m = (m - mlead g) + mlead g)%MM => [|H];
+    first by rewrite submK.
+  rewrite [X in (g*_)@_X]H mcoeffMX divfK;
+    first by apply /negP.
+  by rewrite subrr.
 Qed.
 
-Lemma onmod_bot: \bot%O = 0%R :> G.
-Proof.
-  apply /le_anti /andP; split.
-  - by exact (le0x 0%R).
-  - by apply onmod0x.
-Qed.
-End ONModuleTheory.
+(*|
+In a lead reduction step, we perform a one step reduction with
+respect to the leading monomial of :math:`f`.
+|*)
+Definition lred1 (f g: {mpoly K[n]}): {mpoly K[n]} :=
+  red1 (mlead f) f g.
 
 (*|
-The ordered Abelian monoid structure will be the structure that we 
-impose on monomials later on. Initially, however, we will work
-in slightly more generality by considering the group ring
-:math:`K[G]`, where :math:`K` is a field and :math:`G` is an ordered
-Abelian group.
+Importantly, performing lead reduction always strictly
+decreases the leading term (in degrevlex ordering).
+|*)
+Lemma lred1_le: forall f g,
+  (mleadc g != 0%R) ->
+  (mlead g <= mlead f)%MM ->
+  (mlead (lred1 f g) < mlead f)%O.
+Proof.
+  move => f g Hg Hlmg.
+Admitted.
 
-The :coq:`{freeg G / K}` construct does precisely this, defining the
-group ring with coefficients in :math:`K` over the base group :math:`G`.
+(*|
+Now we define one step lead reduction by a sequence of polynomials
+by just iterating the one step lead reduction over a sequence.
+|*)
+Fixpoint lred1s (f: {mpoly K[n]}) (A: seq {mpoly K[n]}) :=
+  match A with
+  | [::] => f
+  | g::A' => lred1s (lred1 f g) A'
+  end.
+
+(*|
+Finally, to define the full lead reduction, we will need to do some
+
 |*)
 
-Definition groupRing {d: Order.disp_t}
-  (K: fieldType) (G: onmodType d) :=
-    {freeg G / K}.
-
-Notation "K [ G ]" := (groupRing K G) (format "K [ G ]").
-
-Section HilbertBasis.
-
-Context {d: Order.disp_t}.
-Variables (G: onmodType d) (K: fieldType).
-
-(*| The leading monomial is the maximum among all monomials with
-respect to the monomial ordering. |*)
-Definition kg_mlead (p: K[G]): G := (\max_(g <- dom p | true) g)%O.
-Definition kg_clead (p: K[G]): K := coeff (kg_mlead p) p.
+#[program]
+Fixpoint lred'
+  (f: {mpoly K[n]}) (A: seq {mpoly K[n]})
+  {measure (mlead f) (<%O: 'X_{1..n} -> 'X_{1..n} -> Prop)} :=
+  let redf := lred1s f A in
+  if (mlead redf < mlead f)%O then lreds redf A
+  else f.
 
 
+Definition spoly (f g: {mpoly K[n]}): {mpoly K[n]} :=
+  let lcm := mlcm (mlead f) (mlead g) in
+  red1 lcm 'X_[lcm] f - red1 lcm 'X_[lcm] g.
 
-End HilbertBasis.
+End GrobnerBasis.
