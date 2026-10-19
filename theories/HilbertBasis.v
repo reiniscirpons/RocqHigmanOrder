@@ -1,8 +1,8 @@
 From HB Require Import structures.
 Require Import ssreflect ssrbool ssrfun.
 From Equations.Prop Require Import Logic Equations.
-From mathcomp Require Import ssrnat choice eqtype seq.
-From mathcomp Require Import order ssralg mpoly.
+From mathcomp Require Import ssrnat choice eqtype seq fintype tuple bigop.
+From mathcomp Require Import order ssralg freeg mpoly.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -10,12 +10,171 @@ Unset Printing Implicit Defensive.
 
 Import Order.Theory GRing.Theory.
 
+Section Utils.
+
+Context {T1 T2: eqType}.
+Implicit Types (f: T1 -> T2) (X: seq T1) (Y: seq ((seq T1) * T2)).
+
+Fixpoint updategroup Y (x: T1) (y: T2): seq ((seq T1) * T2) :=
+  match Y with
+  | [::] => [:: ([:: x], y)]
+  | (l, y')::Y' =>
+    if y == y' then
+      (x::l, y')::Y'
+    else
+      (l, y')::(updategroup Y' x y)
+    end.
+
+Fixpoint groupby f X: seq ((seq T1) * T2) :=
+  match X with
+  | [::] => [::]
+  | x::X' => updategroup (groupby f X') x (f x)
+  end.
+
+Lemma updategroup_flatten1: forall f X,
+  perm_eq X (flatten [seq z.1 | z <- groupby f X]).
+Proof.
+Admitted.
+
+Lemma updategroup_uniq2: forall f X,
+  uniq [seq z.2 | z <- groupby f X].
+Proof.
+Admitted.
+
+End Utils.
+
+Section GeneratedIdeal.
+
+Open Scope ring_scope.
+Context {R: nzRingType}.
+Variable (B: seq R).
+Implicit Types (x y r: R) (C: seq R).
+Let k := size B.
+
+Definition in_genideal x: Prop := exists C,
+  x = \sum_(0 <= i < k) C`_i * B`_i.
+
+(*Check nth_map.*)
+(*Lemma nth_map: forall (T1 : pzRingType) (T2 : pzRingType) *)
+(*  (f : T1 -> T2) (n : nat) (s : seq T1),*)
+(*  n < size s -> [seq f i | i <- s]`_n = f (s`_n).*)
+(*Proof.*)
+(*  move => T1 T2 f n s Hn.*)
+(*  by apply nth_map.*)
+(*Qed.*)
+
+Lemma genideal_addr_closed: forall x y,
+  in_genideal x -> in_genideal y -> in_genideal (x + y).
+Proof.
+  move => x y [Cx ->] [Cy ->].
+  exists [tuple Cx`_i + Cy`_i | i < k].
+Admitted.
+
+Lemma genideal_scaler_closed: forall x r,
+  in_genideal x -> in_genideal (x * r).
+Proof.
+  move => x r [Cx ->].
+  exists [tuple Cx`_i * r | i < k].
+Admitted.
+
+(* TODO: Prove the above *)
+
+End GeneratedIdeal.
+
+Section MultinomialDecomposition.
+
+Open Scope ring_scope.
+Context {R: nzRingType}.
+Variable (n: nat) (B: seq {mpoly R[n]}).
+
+Record decomp_term := DecompTerm {
+  dcoeff: R;
+  dmonom: 'X_{1..n};
+  dpolyn: {mpoly R[n]}
+}.
+
+Definition decomp_term_beq (x y: decomp_term): bool :=
+  (dcoeff x == dcoeff y) && (dmonom x == dmonom y) && (dpolyn x == dpolyn y).
+
+Lemma decomp_term_beqP: Equality.axiom decomp_term_beq.
+Proof.
+  move => [x1 x2 x3] [y1 y2 y3]. apply (iffP idP) => /=.
+  - by rewrite /decomp_term_beq => /= /andP [/andP [/eqP -> /eqP ->]/eqP -> //].
+  - by case => -> -> ->; rewrite /decomp_term_beq /= !eq_refl.
+Qed.
+
+HB.instance Definition _ := hasDecEq.Build decomp_term decomp_term_beqP.
+
+Implicit Types (x y r: {mpoly R[n]}) (D: seq decomp_term).
+Let k := size B.
+
+Print subset.body.
+
+Definition is_decomp D: Prop :=  {subset [seq dpolyn d | d <- D] <= B}.
+
+Definition deval (d: decomp_term): {mpoly R[n]} :=
+  [mpoly <<dcoeff d *g dmonom d >>] * dpolyn d.
+
+Definition devals D: {mpoly R[n]} :=
+  \sum_(d <- D) deval d.
+
+Definition has_mdecomp x: Prop := exists D, x == devals D.
+
+Lemma has_mdecompP: forall x,
+  in_genideal B x <-> has_mdecomp x.
+Proof.
+Admitted.
+
+Definition dlead D: 'X_{1..n} := (\join_(d <- D) mlead (deval d))%O.
+
+Lemma mlead_le_dlead: forall D, (mlead (devals D) <= dlead D)%O.
+Proof.
+  elim => [|d D /=].
+  - by rewrite /devals /dlead !big_nil mlead0.
+  - rewrite /devals /dlead !big_cons => IH.
+    apply le_trans with (mlead (deval d) `|` mlead (\sum_(j <- D) deval j))%O.
+    + by apply mleadD_le.
+    + by rewrite leU2.
+Qed.
+
+Variable (D: seq decomp_term).
+Hypothesis HlmD: (mlead (devals D) < dlead D)%O.
+
+Let S1 := [seq t <- D | mlead (deval t) == dlead D].
+Let S2 := [seq t <- D | t \notin S1].
+
+Local Lemma Ssum: perm_eq (S1 ++ S2) D.
+Proof.
+Admitted.
+
+Local Lemma DnilN: D <> [::].
+Proof.
+  move => H; move: HlmD.
+  by rewrite H /devals /dlead !big_nil mlead0 ltx0.
+Qed.
+
+Lemma S1nilN: S1 <> [::].
+Proof.
+  apply /eqP.
+  rewrite -has_filter /dlead.
+  (* TODO: We have \join currently, but it really is the max,
+     for max its immediate (max is one of the elements for non -mepty list),
+     for join is false in general. We should fix. *)
+Admitted.
+
+Lemma S1sum0: \sum_(d <- D)
+  [mpoly << dcoeff d *g ((dmonom d) + (mlead (dpolyn d)))%MM >>] = 0%R.
+Proof.
+Admitted.
+
+End MultinomialDecomposition.
+
 Section GrobnerBasis.
 
 Open Scope ring_scope.
 Variable (K:fieldType) (n: nat).
 Implicit Types
-  (m: 'X_{1..n}) (f g: {mpoly K[n]}) (A: seq {mpoly K[n]}).
+  (m: 'X_{1..n}) (f g: {mpoly K[n]}) (B: seq {mpoly K[n]}).
 
 (*|
 One step reduction of :math:`f` by :math:`g` at the
@@ -78,26 +237,27 @@ Lemma lred1_le: forall f g,
   is_lred1 f g ->
   (mlead (lred1 f g) < mlead f)%O.
 Proof.
+  Search mlead.
   move => f g /andP [/andP [Hg Hf] Hgf].
 Admitted.
 
 (*|
 Now we define one step lead reduction by a sequence of polynomials
-:math:`A`, which reduces :math:`f` by the first applicable
+:math:`B`, which reduces :math:`f` by the first applicable
 (i.e. lead reducible) polynomial in the sequence, or returns
 :math:`f` unchanged otherwise.
 The :coq:`is_lred1s` function returns :coq:`true` if any polynomial
 is applicable and :coq:`false` otherwise.
 |*)
 
-Definition lred1s f A := lred1 f (nth f A (find (is_lred1 f) A)).
-Definition is_lred1s f A := has (is_lred1 f) A.
+Definition lred1s f B := lred1 f (nth 0%R B (find (is_lred1 f) B)).
+Definition is_lred1s f B := has (is_lred1 f) B.
 
-Lemma lred1s_le: forall f A,
-  is_lred1s f A ->
-  (mlead (lred1s f A) < mlead f)%O.
+Lemma lred1s_le: forall f B,
+  is_lred1s f B ->
+  (mlead (lred1s f B) < mlead f)%O.
 Proof.
-  move => f A H.
+  move => f B H.
   by apply /lred1_le /nth_find.
 Qed.
 
@@ -129,12 +289,12 @@ every recursive call.
 
 We then need to prove that this is actually the case. If we tried
 doing this without some extra help we would surely fail:
-our recursive call is to :coq:`lred (lred1s f A) A`, and
-:coq:`lred1s f A` has a smaller leading monomial only if
-it was lead reducible by at least one element of :coq:`A`.
-This is what the :coq:`with inspect (is_lred1s f A)` is doing.
+our recursive call is to :coq:`lred (lred1s f B) B`, and
+:coq:`lred1s f B` has a smaller leading monomial only if
+it was lead reducible by at least one element of :coq:`B`.
+This is what the :coq:`with inspect (is_lred1s f B)` is doing.
 One one hand it lets us change what the function does depending
-on whether :coq:`is_lred1s f A` returns :coq:`true` or :coq:`false`.
+on whether :coq:`is_lred1s f B` returns :coq:`true` or :coq:`false`.
 On the other hand, the :coq:`inspect` allows us to also remember
 what the output of this function was, which means we are able to
 use it in the proof. Hence the termination of this
@@ -146,10 +306,10 @@ statement prettier.
 
 Notation "x 'eqn:' p" := (exist _ x p) (only parsing, at level 20).
 
-Equations? lred f A: {mpoly K[n]}
+Equations? lred f B: {mpoly K[n]}
   by wf (mlead f) <%O :=
-    lred f A with inspect (is_lred1s f A) := {
-      | true eqn: H => lred (lred1s f A) A;
+    lred f B with inspect (is_lred1s f B) := {
+      | true eqn: H => lred (lred1s f B) B;
       | false eqn: _ => f
     }.
 Proof.
@@ -160,12 +320,12 @@ Qed.
 Another perk of the :coq:`Equations` library is that we can
 now use the :coq:`funelim` tactic to do casework on the inductive
 definition of :coq:`lred`. So for example we can prove that the result
-of :coq:`lred` is not lead reducible by any element of :coq:`A`.
+of :coq:`lred` is not lead reducible by any element of :coq:`B`.
 |*)
-Lemma lred_is_lred1s: forall f A, is_lred1s (lred f A) A = false.
+Lemma lred_is_lred1s: forall f B, is_lred1s (lred f B) B = false.
 Proof.
-  move => f A.
-  by funelim (lred f A).
+  move => f B.
+  by funelim (lred f B).
 Qed.
 
 (*|
@@ -216,12 +376,11 @@ A _Gröbner basis_ is a set of polynomials in which every lead
 reduction of any critical pair of elements in the basis equals 0.
 We define it below as the boolean predicate :coq:`is_gbasis`.
 |*)
-Definition is_gbasis A: bool :=
-  all2 (fun f g => lred (spoly f g) A == 0%R) A A.
+Definition is_gbasis B: bool :=
+  all2 (fun f g => lred (spoly f g) B == 0%R) B B.
 
-(*|
-As it turns out, every set of polynomials can be extended to a
-Gröbner basis generating the same ideal.
-|*)
+
+(* TODO: Prove Lemma 3.8 from Aliaume and Arka paper to show that 
+   In ideal iff is_gbasis B -> lred f B = 0. *)
 
 End GrobnerBasis.
