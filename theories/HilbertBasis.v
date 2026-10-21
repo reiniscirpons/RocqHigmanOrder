@@ -3,6 +3,7 @@ Require Import ssreflect ssrbool ssrfun.
 From Equations.Prop Require Import Logic Equations.
 From mathcomp Require Import ssrnat choice eqtype seq fintype tuple bigop.
 From mathcomp Require Import order ssralg freeg mpoly.
+From mathcomp Require Import ssrAC.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -84,14 +85,15 @@ End GeneratedIdeal.
 Section MultinomialDecomposition.
 
 Open Scope ring_scope.
-Context {R: nzRingType}.
-Variable (n: nat) (B: seq {mpoly R[n]}).
+Variable (R: nzRingType) (n: nat) (B: seq {mpoly R[n]}).
 
 Record decomp_term := DecompTerm {
   dcoeff: R;
   dmonom: 'X_{1..n};
   dpolyn: {mpoly R[n]}
 }.
+
+Definition DT0 := (DecompTerm 0%R 0%MM 0%R).
 
 Definition decomp_term_beq (x y: decomp_term): bool :=
   (dcoeff x == dcoeff y) && (dmonom x == dmonom y) && (dpolyn x == dpolyn y).
@@ -104,6 +106,18 @@ Proof.
 Qed.
 
 HB.instance Definition _ := hasDecEq.Build decomp_term decomp_term_beqP.
+
+Definition normalize_decomps (D: seq decomp_term): seq decomp_term :=
+  [seq d <- D | dcoeff d != 0].
+
+Definition is_normalized_decomps (D: seq decomp_term): bool :=
+  all (fun d => dcoeff d != 0) D.
+
+Lemma normalize_is_normalized: forall D, is_normalized_decomps (normalize_decomps D).
+Proof.
+  move => D. apply /allP => d.
+  by rewrite mem_filter => /andP [].
+Qed.
 
 Implicit Types (x y r: {mpoly R[n]}) (D: seq decomp_term).
 Let k := size B.
@@ -125,7 +139,8 @@ Lemma has_mdecompP: forall x,
 Proof.
 Admitted.
 
-Definition dlead D: 'X_{1..n} := (\join_(d <- D) mlead (deval d))%O.
+(* TODO: WTF? Maybe add the d <- D form to mathcomp, probably bug. *)
+Definition dlead D: 'X_{1..n} := (\max_(d <- D | true) mlead (deval d))%O.
 
 Lemma mlead_le_dlead: forall D, (mlead (devals D) <= dlead D)%O.
 Proof.
@@ -137,7 +152,13 @@ Proof.
     + by rewrite leU2.
 Qed.
 
+
+(*Definition decomp_trivial (p: {mpoly R[n]}): decomp_term :=*)
+(*  [seq (DecompTerm ) | t <- msupp p].*)
+
+
 Variable (D: seq decomp_term).
+Hypothesis Hnorm: is_normalized_decomps D.
 Hypothesis HlmD: (mlead (devals D) < dlead D)%O.
 
 Let S1 := [seq t <- D | mlead (deval t) == dlead D].
@@ -153,18 +174,125 @@ Proof.
   by rewrite H /devals /dlead !big_nil mlead0 ltx0.
 Qed.
 
+(* TODO: Add to mathcomp?? *)
+Lemma max_mem {T: Type}: forall (t0: T) (f: T -> 'X_{1..n}) (S: seq T),  
+  size S != 0 -> exists i, i < size S /\ (\max_(x <- S|true) f x)%O = f (nth t0 S i).
+Proof.
+  move => t0 f S.
+  elim: S => [//|x S IH _].
+  case: S IH => [_|y S /= IH].
+  - exists 0.
+    by rewrite big_cons big_nil /(Order.max) ltx0.
+  - move: (IH is_true_true) => [i [HiS Hi]].
+    rewrite big_cons /=.
+    case Hx: (f x < \max_(j <- y :: S | true) f j)%O.
+    + exists i.+1.
+      move: Hx.
+      by rewrite /Order.max Hi => -> /=.
+    + exists 0.
+      move: Hx.
+      by rewrite /Order.max Hi => ->.
+Qed.
+
 Lemma S1nilN: S1 <> [::].
 Proof.
   apply /eqP.
   rewrite -has_filter /dlead.
-  (* TODO: We have \join currently, but it really is the max,
-     for max its immediate (max is one of the elements for non -mepty list),
-     for join is false in general. We should fix. *)
+  enough 
+    (H: exists i,
+      i < size D /\ dlead D = mlead (deval (nth (DecompTerm 0%R 0%MM 0%R) D i))).
+  - apply /hasP.
+    case: H => i [HiS Hi].
+    exists ((nth {| dcoeff := 0; dmonom := 0; dpolyn := 0 |} D i)) => [|].
+    + by apply /(nthP (DecompTerm 0%R 0%MM 0%R)); exists i.
+    + by rewrite -Hi.
+  - rewrite /dlead. apply (max_mem _ (fun t => mlead (deval t))).
+    by move: DnilN; case: D.
+Qed.
+
+(*Lemma S1sum0: \sum_(d <- S1)*)
+(*  [mpoly*)
+(*    << dcoeff d *g ((dmonom d) + (mlead (dpolyn d)))%MM >>] *)
+(*    = 0%R*)
+(*  <-> (mlead (devals S1) < dlead S1)%O.*)
+(*Proof.*)
+(*  split => [H|].*)
+(*  - rewrite /mlead /devals.*)
+(**)
+(*Lemma S1sum0: \sum_(d <- S1)*)
+(*  [mpoly << dcoeff d *g ((dmonom d) + (mlead (dpolyn d)))%MM >>] = 0%R.*)
+(*Proof.*)
+(*Qed.*)
+
+
+Lemma sum_coeffC:
+  (\sum_(d <- D) deval d)@_(dlead D) = 
+  (\sum_(d <- D) (deval d)@_(dlead D)).
+Proof.
 Admitted.
 
-Lemma S1sum0: \sum_(d <- D)
-  [mpoly << dcoeff d *g ((dmonom d) + (mlead (dpolyn d)))%MM >>] = 0%R.
+Lemma S1P: forall d,
+  deval d != 0 ->
+  (mlead (deval d) < dlead D)%O ->
+  ((deval d)@_(dlead D) != 0) = ((mlead (deval d) == dlead D)).
 Proof.
+  move => d Hd HD.
+  move: (mlead_supp Hd).
+  case H: (mlead (deval d) < dlead D)%O.
+  - rewrite (mcoeff_gt_mlead H).
+    case H': ((mlead (deval d) == dlead D)).
+    + by move/eqP in H'; rewrite H' ltxx in H.
+    + by move => _; apply /negP.
+  - move => H'.
+    move/negP: H => /negP H.
+    rewrite ltNge negbK in H.
+    case H'': ((mlead (deval d) == dlead D)).
+    + move /eqP in H''.
+      by rewrite -mcoeff_msupp -H'' H'.
+    + exfalso.
+      by rewrite leNgt HD in H.
+Qed.
+
+Lemma sum_filter0 {T: Type}:
+  forall (X: (seq T)) (f: T -> R),
+  \sum_(x <- X) f x = \sum_(x <- X | f x != 0%R) f x.
+Proof.
+Admitted.
+
+(* Want: every polynomial can be decomposed as 
+  mcoeff * mlead + foo
+*)
+
+Search mcoeff mlead.
+
+Lemma dcoeff_dlead: forall d,
+  mlead (deval d) == dlead D ->
+  dcoeff d = (deval d)@_(dlead D).
+Proof. 
+  move => d Hd.
+  rewrite /deval /=.
+  (* TODO: decomposition lemma, then linearity, then
+     distributes, then one part gives right answer, other
+     gives 0 because it is smaller. *)
+Admitted.
+
+Lemma S1sum0: \sum_(d <- S1) dcoeff d = 0%R.
+Proof.
+  have: (\sum_(d <- S1) dcoeff d = (devals D)@_(dlead D)) => [//|H].
+  - rewrite /devals sum_coeffC (sum_filter0 D)
+      -(big_filter D).
+    have: ([seq x <- D | (deval x)@_(dlead D) != 0] = S1).
+    + rewrite /S1.
+      apply eq_in_filter => d Hd.
+      rewrite S1P => [||//].
+      * admit.
+      * admit. (*TODO: fix this, the case is wrong, the
+          assumption is too much *)
+    + move => ->.
+      rewrite /S1 !big_filter.
+      apply eq_bigr => d Hd.
+      by rewrite dcoeff_dlead.
+  - by rewrite H mcoeff_gt_mlead.
 Admitted.
 
 End MultinomialDecomposition.
@@ -174,7 +302,8 @@ Section GrobnerBasis.
 Open Scope ring_scope.
 Variable (K:fieldType) (n: nat).
 Implicit Types
-  (m: 'X_{1..n}) (f g: {mpoly K[n]}) (B: seq {mpoly K[n]}).
+  (m: 'X_{1..n}) (f g: {mpoly K[n]}) (B: seq {mpoly K[n]})
+  (d: decomp_term K n) (D: seq (decomp_term K n)).
 
 (*|
 One step reduction of :math:`f` by :math:`g` at the
@@ -190,6 +319,19 @@ Definition red1 m f g: {mpoly K[n]} :=
     if (lmg <= m)%MM then
       f - (f@_m / lcg) *: (g * 'X_[m - lmg])
     else f.
+
+Definition red1K: forall m f g,
+  (mleadc g != 0%R) ->
+  (mlead g <= m)%MM ->
+  let: lmg := mlead g in 
+  let: lcg := mleadc g in
+  f = red1 m f g + (f@_m / lcg) *: (g * 'X_[m - lmg]).
+Proof.
+  move => m f g /negP Hc Hm.
+  rewrite /red1 Hm.
+  case: ifP => [//|_].
+  by rewrite subrK.
+Qed.
 
 (*|
 Importantly, single step reduction removes the monomial :math:`m`
@@ -225,8 +367,19 @@ For convenience we define :coq:`is_lred1` to check whether
 Definition is_lred1 f g: bool :=
   (mleadc g != 0%R) &&
   (mleadc f != 0%R) &&
-  (mlead g <= mlead f)%O.
+  (mlead g <= mlead f)%MM.
 
+Definition lred1K: forall f g,
+  is_lred1 f g ->
+  let: lmg := mlead g in 
+  let: lmf := mlead f in 
+  let: lcg := mleadc g in
+  let: lcf := mleadc f in 
+  f = lred1 f g + (lcf / lcg) *: (g * 'X_[lmf - lmg]).
+Proof.
+  move => f g /andP [/andP [Hg Hf] Hfg].
+  by apply red1K with (m := mlead f).
+Qed.
 
 (*|
 Importantly, performing lead reduction always strictly
@@ -252,6 +405,22 @@ is applicable and :coq:`false` otherwise.
 
 Definition lred1s f B := lred1 f (nth 0%R B (find (is_lred1 f) B)).
 Definition is_lred1s f B := has (is_lred1 f) B.
+
+Definition lred1sK: forall f B,
+  is_lred1s f B ->
+  let: g := (nth 0%R B (find (is_lred1 f) B)) in
+  let: lmg := mlead g in 
+  let: lmf := mlead f in 
+  let: lcg := mleadc g in
+  let: lcf := mleadc f in 
+  f = lred1 f g + (lcf / lcg) *: (g * 'X_[lmf - lmg]).
+Proof.
+  move => f B H.
+  apply lred1K.
+  move: H.
+  rewrite /is_lred1s.
+  by apply nth_find.
+Qed.
 
 Lemma lred1s_le: forall f B,
   is_lred1s f B ->
@@ -365,7 +534,8 @@ We define it below as :coq:`spoly`.
 |*)
 Definition spoly f g: {mpoly K[n]} :=
   let lcm := mlcm (mlead f) (mlead g) in
-  red1 lcm 'X_[lcm] f - red1 lcm 'X_[lcm] g.
+  lred1 'X_[lcm] f - lred1 'X_[lcm] g.
+
 
 (*|
 A fundamental observation is that, if the reduction is confluent
@@ -375,9 +545,278 @@ This is sometimes called Newman's lemma.
 A _Gröbner basis_ is a set of polynomials in which every lead
 reduction of any critical pair of elements in the basis equals 0.
 We define it below as the boolean predicate :coq:`is_gbasis`.
+
+TODO: change explanation
 |*)
-Definition is_gbasis B: bool :=
-  all2 (fun f g => lred (spoly f g) B == 0%R) B B.
+Definition ssaturated B: Prop :=
+  forall f g,
+    f \in B ->
+    g \in B ->
+    lred (spoly f g) B == 0%R.
+
+Definition is_decomp_wrt B D: bool :=
+  all (fun d => dpolyn d \in B) D.
+
+Definition is_good_decomp D: bool :=
+  dlead D == mlead (devals D).
+
+(* TODO(figure out if we can make it automatically simplify to this) *)
+Lemma devals_nil: forall R N,
+  @devals R N [::] = 0%R.
+Proof.
+  move => R N.
+  by rewrite /devals big_nil.
+Qed.
+
+Lemma dlead_nil: forall R N,
+  @dlead R N [::] = 0%MM.
+Proof.
+  move => R N.
+  by rewrite /dlead big_nil.
+Qed.
+
+Lemma red0decomp B f:
+  0%R \notin B ->
+  lred f B == 0%R -> exists D,
+    is_good_decomp D /\ is_decomp_wrt B D /\ devals D = f.
+Proof.
+  move => HB0.
+  funelim (lred f B); last first.
+  - move => /eqP ->; exists [::]; split => [|].
+    + by rewrite /is_good_decomp devals_nil dlead_nil mlead0.
+    + by split => [//|]; rewrite devals_nil.
+  - move/H0: HB0 => {}H0.
+    move => /H0 [D [Hgood [HB Hdevals]]].
+    rewrite (lred1sK H).
+    set b := B`_(find (is_lred1 f) B).
+    set c := (mleadc f / mleadc b).
+    set m := (mlead f - mlead b)%MM.
+    exists ((DecompTerm c m b)::D).
+    split.
+    + rewrite /is_good_decomp /dlead /devals !big_cons.
+      rewrite /devals in Hdevals.
+      rewrite Hdevals.
+      move: Hgood => /eqP; rewrite /dlead => ->.
+      rewrite /devals Hdevals.
+      rewrite /deval /=.
+      enough (Hlt: (mlead (lred1s f B) < mlead ([mpoly << c *g m >>] * b))%O).
+      * by rewrite mleadDl // max_l // le_eqVlt Hlt orbC.
+      * have: (mlead ([mpoly << c *g m >>] * b) = mlead f);
+          first admit.
+        move => ->.
+        by rewrite lred1s_le.
+    + split.
+      * rewrite /= HB andbC /=.
+        apply mem_nth.
+        rewrite -has_find.
+        move: H1 => _.
+        rewrite /is_lred1s in H.
+        by rewrite H.
+      * rewrite /devals in Hdevals.
+        rewrite /devals  big_cons Hdevals /deval /= /lred1s addrC.
+        f_equal.
+        by rewrite -mulr_algl mulrC mulrA [_ * b]mulrC -mulrA MPolyU -mulr_algl.
+Admitted.
+
+Definition dsaturated B: Prop :=
+  forall p q,
+    p \in B ->
+    q \in B ->
+    exists (D: seq (decomp_term K n)),
+      is_good_decomp D /\
+      is_decomp_wrt B D /\
+      devals D = spoly p q.
+
+Lemma ssaturated_dsaturated: forall B,
+  0%R \notin B -> ssaturated B -> dsaturated B.
+Proof.
+  move => B HB H p q Hp Hq.
+  move: (H p q Hp Hq) => H0.
+  move: (red0decomp HB H0) => [D HD].
+  by exists D.
+Qed.
+
+Definition lcancel_pair (d1 d2: decomp_term K n): bool :=
+   (mlead (deval d1 + deval d2) < mlead (deval d1))%O &&
+   (mlead (deval d1 + deval d2) < mlead (deval d2))%O.
+
+Lemma lcancel_spoly: forall d1 d2,
+  lcancel_pair d1 d2 ->
+  exists c m,
+    c != 0 /\
+    deval d1 + deval d2 = c *: ('X_[m] * spoly (dpolyn d1) (dpolyn d2)). 
+Proof.
+  move => d1 d2 /andP [].
+Admitted.
+
+Definition csaturated B: Prop :=
+  forall d1 d2,
+    dpolyn d1 \in B ->
+    dpolyn d2 \in B ->
+    lcancel_pair d1 d2 ->
+    exists (D: seq (decomp_term K n)),
+      is_good_decomp D /\
+      is_decomp_wrt B D /\
+      devals D = deval d1 + deval d2.
+
+Definition scale_decomp c m D :=
+  [seq (DecompTerm (c * dcoeff d) (m + dmonom d) (dpolyn d) ) | d <- D ].
+
+Lemma devals_scale: forall D c m,
+  c != 0 ->
+  devals (scale_decomp c m D) = c *: ('X_[m] * devals D).
+Proof.
+  move => D c m Hc.
+  rewrite /devals big_map /deval /=.
+Admitted.
+
+Lemma good_scale: forall D c m,
+  c != 0 ->
+  is_good_decomp D ->
+  is_good_decomp (scale_decomp c m D).
+Proof.
+  move => D c m Hc /eqP HD.
+  rewrite /is_good_decomp /dlead /= devals_scale // big_map /deval /=.
+  rewrite /is_good_decomp in HD.
+  rewrite mleadZ //.
+  case HD0: (devals D == 0).
+  - move/eqP in HD0.
+  Search (mlead (_ *: _)).
+Admitted.
+  
+
+Lemma dsaturated_csaturated: forall B,
+  0%R \notin B -> dsaturated B -> csaturated  B.
+Proof.
+  move => B HB0 Hd d1 d2 Hd1 Hd2 /lcancel_spoly [c [m]] [Hc H].
+  move: (Hd (dpolyn d1) (dpolyn d2) Hd1 Hd2) => [D [Hgood [Hdec Hdevals]]].
+  exists (scale_decomp c m D).
+  split;
+    first by apply good_scale.
+  split.
+  - rewrite /is_decomp_wrt all_map.
+    by apply Hdec.
+  - by rewrite devals_scale // Hdevals -H.
+Qed.
+
+Print csaturated.
+
+Lemma decomp_lead_split: forall D,
+  let D1 := [seq d <- D | mlead (deval d) == dlead D] in
+  let D2 := [seq d <- D | (mlead (deval d) < dlead D)%O] in
+  devals D1 + devals D2 = devals D.
+Proof.
+Admitted.
+
+Lemma decomp_coeff: forall D m,
+  (devals D)@_m = \sum_(d <- D) (deval d)@_m.
+Admitted.
+
+Lemma decomp_bad_sum0: forall D m,
+  is_good_decomp D ->
+  all (fun d => mlead (deval d) == m) D ->
+  (mlead (devals D) < m)%O ->
+  \sum_(d <- D) (dcoeff d)*(mleadc (dpolyn d)) = 0.
+Proof.
+  move => D m Hgood H Hlead.
+  move: (decomp_coeff D m).
+  have: ((devals D)@_m = 0) => [|-> H'].
+  - apply /memN_msupp_eq0 /negP.
+    move => /msupp_le_mlead.
+    by rewrite leNgt Hlead.
+  - rewrite [X in _ = X]H'.
+    move/all_filterP: H => <-.
+    rewrite !big_filter.
+    apply eq_bigr => d /eqP <-.
+    rewrite /deval mleadcM_proper.
+    + admit.
+    + admit.
+Admitted.
+
+(*Definition pairwise_cancel_term d0 D :=*)
+(*  let dc0 := dcoeff d0 in*)
+(*  let dm0 := dmonom d0 in*)
+(*  let dp0 := dpolyn d0 in*)
+(*  [seq *)
+(*    let dci := dcoeff d in*)
+(*    let dmi := dmonom d in*)
+(*    let dpi := dpolyn d in*)
+(*    dci *: ('X_[dmi] * dpi - ((mleadc dpi)/(mleadc dp0)) *: 'X_[dm0] * dp0)*)
+(*  | d <- D].*)
+
+Definition pairwise_cancel_term d0 D :=
+  let dc0 := dcoeff d0 in
+  let dm0 := dmonom d0 in
+  let dp0 := dpolyn d0 in
+  [seq 
+    let dci := dcoeff d in
+    let dpi := dpolyn d in
+    (d, 
+    DecompTerm (- (dci * (mleadc dpi)/(mleadc dp0))) dm0 dp0)
+  | d <- D].
+
+Lemma pairwise_cancel_local_props D m:
+  is_good_decomp D ->
+  all (fun d => mlead (deval d) == m) D ->
+  (mlead (devals D) < m)%O ->
+  forall (p: decomp_term K n * decomp_term K n),
+    p \in pairwise_cancel_term (head (DT0 K n) D) (behead D) ->
+    let: (d1, d2) := p in
+      lcancel_pair d1 d2 /\
+      (mlead (deval d1 + deval d2) < m)%O.
+Proof.
+Admitted.
+
+Lemma pairwise_cancel_sumE D m:
+  is_good_decomp D ->
+  all (fun d => mlead (deval d) == m) D ->
+  (mlead (devals D) < m)%O ->
+  let PCT := pairwise_cancel_term (head (DT0 K n) D) (behead D) in
+  (\sum_(p <- PCT) 
+    let: (d1, d2) := p in
+    deval d1 + deval d2) = devals D.
+Proof.
+Admitted.
+
+
+Lemma csaturated_pairwise_cancel_normalize B D m:
+  csaturated B ->
+  is_good_decomp D ->
+  all (fun d => mlead (deval d) == m) D ->
+  (mlead (devals D) < m)%O ->
+    exists (D': seq (decomp_term K n)),
+      is_good_decomp D' /\
+      is_decomp_wrt B D' /\
+      devals D' = devals D /\
+      (dlead D' < m)%O.
+Proof.
+Admitted.
+
+Definition weak_gbasis B: Prop := forall D: seq (decomp_term K n),
+  is_decomp_wrt B D ->
+  exists D',
+    is_decomp_wrt B D /\
+    devals D = devals D' /\
+    dlead D' = mlead (devals D').
+
+Lemma csaturated_weak_gbasis: forall B,
+  csaturated B -> weak_gbasis B.
+Proof.
+  move => B H D.
+  set ml := dlead D.
+  have: (ml = dlead D) => [//|].
+  move: ml => ml.
+  elim/(well_founded_ind (@ltom_wf n)): ml D => ml IH D Hml.
+  case Heq: (dlead D == mlead (devals D)).
+  - exists D.
+    by split => [//|]; split => [//|]; apply /eqP.
+  - have: ((dlead D < mlead (devals D)))%O.
+    + admit.
+    + set m :=  mlead (devals D).
+
+
+Definition gbasis B := forall f,
+  reflect (in_genideal B f) (lred f B == 0%R).
 
 
 (* TODO: Prove Lemma 3.8 from Aliaume and Arka paper to show that 
